@@ -1,4 +1,6 @@
 
+'use server'
+
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse, type NextRequest } from 'next/server'
 import { getCrmManagers, type CrmManager } from '@/services/crm-service'
@@ -94,6 +96,11 @@ async function enrichUserProfileFromGraphAPI(accessToken: string) {
     let uniqueUsername = usernameVar;
     let attempts = 0;
     
+    // Ensure username is long enough
+    if (uniqueUsername.length < 3) {
+      uniqueUsername = `${uniqueUsername}${Math.random().toString(36).substring(2, 5)}`;
+    }
+
     while(true) {
         const { data: existingProfile, error: existingError } = await supabase
             .from('profiles')
@@ -197,6 +204,47 @@ export async function GET(request: NextRequest) {
 
     if (sessionData?.session?.provider_token && sessionData.session.user.app_metadata.provider === 'azure') {
       await enrichUserProfileFromGraphAPI(sessionData.session.provider_token);
+    } else {
+        // Handle normal email sign-up profile creation
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', user.id).single();
+            if (!existingProfile) {
+                 // The user does not have a profile, create one.
+                const usernameVar = user.email?.split('@')[0] || `user_${user.id.substring(0, 5)}`;
+                let uniqueUsername = usernameVar;
+                
+                if (uniqueUsername.length < 3) {
+                  uniqueUsername = `${uniqueUsername}${Math.random().toString(36).substring(2, 5)}`;
+                }
+
+                let attempts = 0;
+                while(true) {
+                    const { data: profileCheck, error: checkError } = await supabase.from('profiles').select('id').eq('username', uniqueUsername).single();
+                    if (checkError && checkError.code !== 'PGRST116') { // Don't fail on "no rows found"
+                        throw checkError;
+                    }
+                    if (!profileCheck) break; // Username is unique
+                    attempts++;
+                    uniqueUsername = `${usernameVar}_${Math.random().toString(36).substring(2, 7)}`;
+                    if (attempts > 5) throw new Error("Failed to generate a unique username.");
+                }
+
+                const { error: profileError } = await supabase.from('profiles').insert({
+                    id: user.id,
+                    email: user.email,
+                    username: uniqueUsername,
+                    full_name: user.user_metadata.full_name,
+                    avatar_url: user.user_metadata.avatar_url,
+                });
+
+                if (profileError) {
+                    console.error('Database error saving new user profile:', profileError);
+                    const errorMessage = encodeURIComponent(profileError.message || 'Database error creating user profile.');
+                    return NextResponse.redirect(`${origin}/login?message=${errorMessage}`);
+                }
+            }
+        }
     }
     
     try {
@@ -215,3 +263,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.redirect(`${origin}/login?message=${message}`)
 }
+
+    

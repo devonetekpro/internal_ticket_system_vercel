@@ -1,11 +1,15 @@
 
-
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import type { PermissionKey } from '@/components/providers/permissions-provider';
+import type { PermissionKey, UserRole } from '@/lib/database.types';
 
-export async function checkPermission(permission: PermissionKey) {
+type ProfileWithDept = {
+  role: UserRole | null;
+  department_id: string | null;
+}
+
+export async function checkPermission(permission: PermissionKey): Promise<boolean> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -15,29 +19,33 @@ export async function checkPermission(permission: PermissionKey) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, department_id')
     .eq('id', user.id)
-    .single();
+    .single<ProfileWithDept>();
 
   if (!profile || !profile.role) {
     return false;
   }
   
-  // System admins and CEOs have all permissions implicitly
   if (['system_admin', 'super_admin', 'ceo'].includes(profile.role)) {
       return true;
   }
 
-  const { data: rolePerms } = await supabase
+  // A permission is granted if a rule exists for:
+  // 1. The user's exact role AND their exact department.
+  // 2. The user's exact role AND the permission is global (department_id is null).
+  const { count, error } = await supabase
     .from('role_permissions')
-    .select('permissions')
+    .select('*', { count: 'exact', head: true })
     .eq('role', profile.role)
-    .single();
+    .eq('permission', permission)
+    .or(`department_id.eq.${profile.department_id},department_id.is.null`);
 
-  if (!rolePerms || typeof rolePerms.permissions !== 'object' || rolePerms.permissions === null) {
+  if (error) {
+    console.error(`Error checking permission '${permission}' for role '${profile.role}':`, error);
     return false;
   }
-  
-  const permissions = rolePerms.permissions as Record<string, boolean>;
-  return permissions[permission] === true;
+
+  // If count is greater than 0, a matching rule was found.
+  return count !== null && count > 0;
 }

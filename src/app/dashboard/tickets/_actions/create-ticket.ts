@@ -1,4 +1,5 @@
 
+
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
@@ -10,7 +11,7 @@ import { redirect } from 'next/navigation'
 const formSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(10),
-  departmentIds: z.array(z.string()).min(1),
+  departmentIds: z.array(z.string()).optional(),
   category: z.string().min(1),
   priority: z.enum(["low", "medium", "high", "critical"]),
   assigned_to: z.string().min(1),
@@ -27,21 +28,17 @@ type Result = {
 }
 
 async function findDepartmentHead(departmentId: string): Promise<string | null> {
-    const supabase = await createClient()
+    const supabase = await createClient();
     const { data, error } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('department_id', departmentId)
-        .eq('role', 'department_head')
-        .limit(1)
-        .single()
+        .rpc('get_least_busy_department_head', { dept_id: departmentId });
 
     if (error) {
-        console.error("Error finding department head:", error)
-        return null
+        console.error("Error finding department head:", error);
+        return null;
     }
-
-    return data?.id ?? null
+    
+    // The RPC function is defined to return a single UUID, which is a string in JS/TS.
+    return data as string | null;
 }
 
 export async function createTicket(formData: FormData): Promise<Result> {
@@ -88,7 +85,7 @@ export async function createTicket(formData: FormData): Promise<Result> {
     }
     
     let assignedToId = assigned_to === 'auto-assign' || !assigned_to ? null : assigned_to;
-    if (assigned_to === 'auto-assign' && departmentIds.length > 0) {
+    if (assigned_to === 'auto-assign' && departmentIds && departmentIds.length > 0) {
         // For auto-assign, we'll pick the head of the first selected department
         assignedToId = await findDepartmentHead(departmentIds[0])
     }

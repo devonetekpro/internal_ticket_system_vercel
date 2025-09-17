@@ -21,8 +21,8 @@ const commentFormSchema = z.object({
     .refine((file) => file === null || (file instanceof File && file.size > 0), {
         message: 'Attachment must be a file if provided.',
     })
-    .refine((file) => !file || file.size <= 5 * 1024 * 1024, {
-        message: 'Image must be less than 5MB.',
+    .refine((file) => !file || file.size <= 1 * 1024 * 1024, {
+        message: 'Image must be less than 1MB.',
     })
     .refine((file) => !file || file.type.startsWith('image/'), {
         message: 'Only images are allowed.',

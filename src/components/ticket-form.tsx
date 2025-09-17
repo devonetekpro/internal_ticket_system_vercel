@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import * as React from "react";
@@ -80,7 +81,7 @@ const formSchema = z.object({
   description: z
     .string()
     .min(10, { message: "Description must be at least 10 characters." }),
-  departmentIds: z.array(z.string()).optional(),
+  departmentId: z.string().min(1, { message: "Department is required." }),
   category: z.string().min(1, { message: "Category is required." }),
   priority: z.enum(["low", "medium", "high", "critical"]),
   assigned_to: z.string().min(1, { message: "Assignee is required." }),
@@ -129,8 +130,6 @@ export function TicketForm({
   const [users, setUsers] = React.useState<Profile[]>([]);
   const [collaborators, setCollaborators] = React.useState<Profile[]>([]);
   const [assigneePopoverOpen, setAssigneePopoverOpen] = React.useState(false);
-  const [departmentPopoverOpen, setDepartmentPopoverOpen] =
-    React.useState(false);
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
 
   const form = useForm<TicketFormValues>({
@@ -138,7 +137,7 @@ export function TicketForm({
     mode: "onChange",
     defaultValues: {
       title: "",
-      departmentIds: [],
+      departmentId: "",
       priority: "medium",
       description: "",
       category: "General Request",
@@ -190,7 +189,7 @@ export function TicketForm({
 
       form.reset({
         title: ticket.title,
-        departmentIds: ticket.ticket_departments.map((td) => td.department_id),
+        departmentId: ticket.ticket_departments[0]?.department_id || "",
         priority: ticket.priority as "low" | "medium" | "high" | "critical",
         description: ticket.description,
         category: ticket.category || "General Request",
@@ -220,9 +219,7 @@ export function TicketForm({
             escalatedTitle ||
             template?.default_title ||
             (template?.title && !template.is_default ? template.title : ""),
-          departmentIds: template?.department_id
-            ? [template.department_id]
-            : [],
+          departmentId: template?.department_id || "",
           priority:
             (template?.priority as "low" | "medium" | "high" | "critical") ||
             "medium",
@@ -250,9 +247,8 @@ export function TicketForm({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null;
     if (selectedFile) {
-      if (selectedFile.size > 10 * 1024 * 1024) {
-        // 10MB limit
-        toast.error("File size cannot exceed 10MB.");
+      if (selectedFile.size > 1 * 1024 * 1024) { // 1MB limit
+        toast.error("File size cannot exceed 1MB.");
         return;
       }
       form.setValue("attachment", selectedFile);
@@ -333,22 +329,20 @@ export function TicketForm({
     if (!assignToValue || assignToValue === "auto-assign") {
       return "Auto-assign";
     }
-    return (
-      users.find((u) => u.id === assignToValue)?.full_name ?? "Unknown User"
-    );
+    const user = users.find((u) => u.id === assignToValue);
+    if (!user) return "Unknown User";
+    return user.full_name ?? user.username ?? user.email ?? "Unknown User";
   };
+  
+  const selectedDepartmentId = form.watch("departmentId");
 
-  const selectedDepartments = form.watch("departmentIds");
-  const getDepartmentLabel = () => {
-    if (!selectedDepartments || selectedDepartments.length === 0) return "Select department(s)";
-    if (selectedDepartments.length === 1)
-      return allDepartments.find((d) => d.id === selectedDepartments[0])?.name;
-    return `${selectedDepartments.length} departments selected`;
-  };
-
-  const availableUsersForAssignment = users.filter(
-    (u) => u.id !== currentUser?.id
-  );
+  const availableUsersForAssignment = React.useMemo(() => {
+    if (!selectedDepartmentId) {
+      return users.filter(u => u.role === 'department_head');
+    }
+    return users.filter(u => u.role === 'department_head' && u.department_id === selectedDepartmentId);
+  }, [users, selectedDepartmentId]);
+  
   const availableUsersForCollaboration = users.filter(
     (u) => u.id !== currentUser?.id && !collaborators.some((c) => c.id === u.id)
   );
@@ -367,8 +361,7 @@ export function TicketForm({
       if (value !== null && value !== undefined) {
         if (
           key === "tags" ||
-          key === "collaborators" ||
-          key === "departmentIds"
+          key === "collaborators"
         ) {
           if (Array.isArray(value)) {
             value.forEach((item) => formData.append(`${key}[]`, item));
@@ -376,12 +369,7 @@ export function TicketForm({
         } else if (key === "attachment" && value instanceof File) {
           formData.append(key, value);
         } else {
-          // This maps the form field name 'assignTo' to 'assigned_to' for the server action
-          const keyMap: { [key: string]: string } = {
-            assignTo: "assigned_to",
-          };
-          const newKey = keyMap[key] || key;
-          formData.append(newKey, String(value));
+          formData.append(key, String(value));
         }
       }
     });
@@ -487,70 +475,32 @@ export function TicketForm({
                 <h3 className="text-lg font-semibold">Categorization</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <FormField
+                 <FormField
                   control={form.control}
-                  name="departmentIds"
+                  name="departmentId"
                   render={({ field }) => (
-                    <FormItem className="flex flex-col">
+                    <FormItem>
                       <FormLabel>
-                        Department(s){" "}
+                        Department <span className="text-destructive">*</span>
                       </FormLabel>
-                      <Popover
-                        open={departmentPopoverOpen}
-                        onOpenChange={setDepartmentPopoverOpen}
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        defaultValue={field.value}
                       >
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              className={cn(
-                                "w-full justify-between",
-                                !field.value?.length && "text-muted-foreground"
-                              )}
-                            >
-                              {getDepartmentLabel()}
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                          <Command>
-                            <CommandInput placeholder="Search departments..." />
-                            <CommandList>
-                              <CommandEmpty>No departments found.</CommandEmpty>
-                              <CommandGroup>
-                                {allDepartments.map((department) => (
-                                  <CommandItem
-                                    key={department.id}
-                                    onSelect={() => {
-                                      const currentIds = field.value || [];
-                                      const newIds = currentIds.includes(
-                                        department.id
-                                      )
-                                        ? currentIds.filter(
-                                            (id) => id !== department.id
-                                          )
-                                        : [...currentIds, department.id];
-                                      field.onChange(newIds);
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        field.value?.includes(department.id)
-                                          ? "opacity-100"
-                                          : "opacity-0"
-                                      )}
-                                    />
-                                    {department.name}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
+                        <FormControl>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select a department" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {allDepartments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.id}>
+                              {dept.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -641,9 +591,7 @@ export function TicketForm({
                                 !field.value && "text-muted-foreground"
                               )}
                             >
-                              {field.value
-                                ? getAssigneeLabel(field.value)
-                                : "Select assignment"}
+                              {getAssigneeLabel(field.value)}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </FormControl>
@@ -859,7 +807,7 @@ export function TicketForm({
                               or drag and drop
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              PDF, DOC, XLS, TXT, Images (MAX. 10MB)
+                              PDF, DOC, XLS, TXT, Images (MAX. 1MB)
                             </p>
                           </div>
                           <Input
@@ -892,37 +840,31 @@ export function TicketForm({
                 )}
               />
 
-              {filePreview && (
+              {file && (
                 <div className="mt-4 relative w-48 h-48">
-                  <img
-                    src={filePreview}
-                    alt="File preview"
-                    className="w-full h-full object-cover rounded-md border"
-                  />
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
-                    onClick={removeFile}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-              {file && !filePreview && (
-                <div className="mt-4 flex items-center p-2 bg-muted rounded-md text-sm border">
-                  <Paperclip className="h-4 w-4 mr-2" />
-                  <span className="flex-grow truncate">
-                    {file.name} - {(file.size / 1024 / 1024).toFixed(2)}MB
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 rounded-full ml-2"
-                    onClick={removeFile}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
+                    {filePreview ? (
+                        <img
+                            src={filePreview}
+                            alt="File preview"
+                            className="w-full h-full object-cover rounded-md border"
+                        />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-muted rounded-md border">
+                            <Paperclip className="h-12 w-12 text-muted-foreground" />
+                        </div>
+                    )}
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-2 text-white text-xs rounded-b-md">
+                        <p className="font-bold truncate">{file.name}</p>
+                        <p>{(file.size / 1024).toFixed(2)} KB</p>
+                    </div>
+                    <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                        onClick={removeFile}
+                    >
+                        <X className="h-4 w-4" />
+                    </Button>
                 </div>
               )}
             </div>

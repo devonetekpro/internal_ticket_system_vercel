@@ -1,11 +1,19 @@
 
+
 import { ClipboardCheck } from 'lucide-react';
 import TaskBoard from './_components/task-board';
 import { getTaskBoardData } from './_actions/task-actions';
+import { checkPermission } from '@/lib/helpers/permissions';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default async function TasksPage() {
+  const canAccess = await checkPermission('view_task_board');
+  if (!canAccess) {
+    redirect('/dashboard?error=unauthorized');
+  }
+
   const boardData = await getTaskBoardData();
 
   return (

@@ -20,38 +20,9 @@ type Profile = Database['public']['Tables']['profiles']['Row'] & { departments: 
 export default function AccountForm({ user, profile: initialProfile }: { user: User, profile: Profile | null }) {
   const supabase = createClient()
   const router = useRouter()
-  const [updating, setUpdating] = useState(false)
-  const [fullname, setFullname] = useState<string | null>(initialProfile?.full_name ?? null)
-  const [username, setUsername] = useState<string | null>(initialProfile?.username ?? null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(initialProfile?.avatar_url ?? null)
   
-  const initials = getInitials(fullname, username, user?.email)
-
-  async function updateProfile({
-    username,
-    fullname,
-  }: {
-    username: string | null
-    fullname: string | null
-  }) {
-    try {
-      setUpdating(true)
-
-      const { error } = await supabase.from('profiles').upsert({
-        id: user.id,
-        full_name: fullname,
-        username,
-        updated_at: new Date().toISOString(),
-      })
-      if (error) throw error
-      toast.success('Profile updated successfully!')
-      router.refresh()
-    } catch (error) {
-      toast.error('Error updating the data!')
-    } finally {
-      setUpdating(false)
-    }
-  }
+  const initials = getInitials(initialProfile?.full_name, initialProfile?.username, user?.email)
 
   const handleAvatarUpload = async (url: string, onUploadComplete: () => void) => {
     try {
@@ -134,10 +105,10 @@ export default function AccountForm({ user, profile: initialProfile }: { user: U
                 <Input
                     id="fullName"
                     type="text"
-                    value={fullname || ''}
-                    onChange={(e) => setFullname(e.target.value)}
-                    disabled={updating}
+                    value={initialProfile?.full_name || ''}
+                    disabled
                     placeholder="Your full name"
+                    className="bg-muted/50"
                     />
             </div>
             <div className="grid gap-2">
@@ -145,19 +116,14 @@ export default function AccountForm({ user, profile: initialProfile }: { user: U
                 <Input
                     id="username"
                     type="text"
-                    value={username || ''}
-                    onChange={(e) => setUsername(e.target.value)}
-                    disabled={updating}
+                    value={initialProfile?.username || ''}
+                    disabled
                     placeholder="Your username"
+                    className="bg-muted/50"
                     />
             </div>
         </div>
       </CardContent>
-       <CardFooter>
-        <Button onClick={() => updateProfile({ fullname, username })} disabled={updating} className="w-full">
-          {updating ? <Loader2 className="animate-spin"/> : 'Update Profile'}
-        </Button>
-      </CardFooter>
     </Card>
   )
 }

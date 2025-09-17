@@ -1,4 +1,5 @@
 
+
 'use client'
 
 import React from 'react'
@@ -129,8 +130,6 @@ const TicketDetailSkeleton = () => {
   )
 }
 
-const COMMENT_POLL_INTERVAL = 30000; // 30 seconds
-
 export default function TicketDetailsPage({
   params,
 }: {
@@ -254,13 +253,6 @@ export default function TicketDetailsPage({
   React.useEffect(() => {
     setLoading(true);
     fetchTicketData(true).finally(() => setLoading(false));
-
-    // Set up polling interval
-    const intervalId = setInterval(() => fetchTicketData(true), COMMENT_POLL_INTERVAL);
-
-    // Clean up interval on component unmount
-    return () => clearInterval(intervalId);
-
   }, [fetchTicketData]);
   
   React.useEffect(() => {
@@ -288,7 +280,11 @@ export default function TicketDetailsPage({
 
 
   const handleCommentPosted = (newComment: CommentWithProfiles) => {
-    handleRefresh();
+    // Optimistically update UI, but rely on realtime/refresh for the source of truth
+    if (ticket) {
+      setTicket(prev => prev ? ({ ...prev, comments: [...prev.comments, newComment] }) : null);
+    }
+    handleRefresh(); // Trigger a full refresh to get latest data
   }
 
   const handleStatusChange = (newStatus: string) => {
@@ -324,4 +320,5 @@ export default function TicketDetailsPage({
     />
   );
 }
+
 

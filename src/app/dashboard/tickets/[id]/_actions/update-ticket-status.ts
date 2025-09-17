@@ -3,6 +3,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { checkPermission } from '@/lib/helpers/permissions'
 
 type UpdateStatusResult = {
   success: boolean;
@@ -20,8 +21,11 @@ export async function updateTicketStatus(ticketId: string, newStatus: string): P
     return { success: false, message: 'You must be logged in to update a ticket.' }
   }
 
-  // NOTE: Permissions temporarily disabled as per user request
-  // We will re-enable RLS and permission checks at the end of the project.
+  const canUpdateStatus = await checkPermission('change_ticket_status');
+  if (!canUpdateStatus) {
+    return { success: false, message: 'You do not have permission to change ticket status.' };
+  }
+
 
   try {
     const updateData: { status: string; } = {
@@ -41,7 +45,9 @@ export async function updateTicketStatus(ticketId: string, newStatus: string): P
     // Create a system comment for the status change
     const { data: userData } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
     const userName = userData?.full_name ?? user.email;
-
+    
+    // The database trigger 'on_ticket_status_change' now handles the notification.
+    // We can still create a system comment for the activity feed.
     const { error: commentError } = await supabase.from('ticket_comments').insert({
       internal_ticket_id: ticketId,
       user_id: user.id, 

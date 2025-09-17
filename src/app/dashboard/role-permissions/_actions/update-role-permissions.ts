@@ -3,15 +3,24 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-import type { RolePermissions } from '@/lib/database.types';
+import { z } from 'zod';
+import type { PermissionKey, UserRole } from '@/lib/database.types';
+import { canManage } from '@/lib/utils';
+import { allPermissionKeys } from '@/lib/database.types';
 
 type UpdateResult = {
   success: boolean;
   message: string;
 };
 
+const permissionUpdateSchema = z.object({
+  permission: z.string(),
+  role: z.string(),
+  departments: z.array(z.string()), // Array of department UUIDs, or ["ALL"] for global
+});
+
 export async function updateRolePermissions(
-  permissionsData: RolePermissions[]
+  permissionsData: z.infer<typeof permissionUpdateSchema>[]
 ): Promise<UpdateResult> {
   const supabase = await createClient();
 
@@ -28,43 +37,66 @@ export async function updateRolePermissions(
     .single();
 
   const managingUserRole = currentUserProfile?.role;
-
-  // Only system admins can update permissions.
-  if (managingUserRole !== 'system_admin' && managingUserRole !== 'ceo') {
-    return { success: false, message: 'You do not have permission to update roles.' };
+  if (!managingUserRole) {
+    return { success: false, message: 'Could not determine your role.' };
   }
 
+  if (!['system_admin', 'super_admin', 'ceo'].includes(managingUserRole)) {
+     return { success: false, message: 'You do not have permission to modify roles.' };
+  }
+
+
   try {
-    // Using a transaction to ensure all updates succeed or none do.
-    const { error } = await supabase.rpc('update_role_permissions', {
-      permissions_data: permissionsData,
+    const recordsToInsert: { role: UserRole; permission: PermissionKey; department_id?: string | null }[] = [];
+    
+    // First, clear all existing permissions for the roles being managed.
+    // This is safer than trying to diff changes.
+    const rolesBeingManaged = [...new Set(permissionsData.map(p => p.role as UserRole))];
+    const { error: deleteError } = await supabase
+      .from('role_permissions')
+      .delete()
+      .in('role', rolesBeingManaged);
+    
+    if (deleteError) {
+      throw new Error(`Database error clearing old permissions: ${deleteError.message}`);
+    }
+    
+    // Now, construct the new records to insert
+    permissionsData.forEach(p => {
+        const isGlobal = p.departments.includes('ALL');
+        
+        if (isGlobal) {
+            recordsToInsert.push({
+                role: p.role as UserRole,
+                permission: p.permission as PermissionKey,
+                department_id: null,
+            });
+        } else {
+            p.departments.forEach(deptId => {
+                recordsToInsert.push({
+                    role: p.role as UserRole,
+                    permission: p.permission as PermissionKey,
+                    department_id: deptId,
+                });
+            });
+        }
     });
 
-    if (error) {
-      throw new Error(`Database error: ${error.message}`);
+    if (recordsToInsert.length > 0) {
+        const { error: insertError } = await supabase
+            .from('role_permissions')
+            .insert(recordsToInsert);
+
+        if (insertError) {
+            throw new Error(`Database error inserting new permissions: ${insertError.message}`);
+        }
     }
 
-    revalidatePath('/dashboard/role-permissions');
+
+    revalidatePath('/dashboard/role-permissions', 'layout');
     return { success: true, message: 'Permissions updated successfully.' };
+
   } catch (error: any) {
     return { success: false, message: error.message };
   }
 }
-
-// We need a helper function in Postgres to perform the upsert from a JSON array.
-// This function needs to be created once in the Supabase SQL editor.
-/*
--- Run this in your Supabase SQL Editor once
-CREATE OR REPLACE FUNCTION update_role_permissions(permissions_data jsonb)
-RETURNS void AS $$
-BEGIN
-  FOR r IN SELECT * FROM jsonb_to_recordset(permissions_data) AS x(role public.user_role, permissions jsonb)
-  LOOP
-    INSERT INTO public.role_permissions (role, permissions)
-    VALUES (r.role, r.permissions)
-    ON CONFLICT (role)
-    DO UPDATE SET permissions = r.permissions;
-  END LOOP;
-END;
-$$ LANGUAGE plpgsql;
-*/

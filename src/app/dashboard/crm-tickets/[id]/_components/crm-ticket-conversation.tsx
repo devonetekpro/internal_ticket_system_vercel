@@ -65,8 +65,8 @@ export default function CrmTicketConversation({ initialTicket }: { initialTicket
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null;
     if (selectedFile) {
-      if (selectedFile.size > 10 * 1024 * 1024) { // 10MB limit
-        toast.error("File size cannot exceed 10MB.");
+      if (selectedFile.size > 1 * 1024 * 1024) { // 1MB limit
+        toast.error("File size cannot exceed 1MB.");
         return;
       }
       setAttachmentFile(selectedFile);
@@ -289,7 +289,7 @@ export default function CrmTicketConversation({ initialTicket }: { initialTicket
               <div className="flex flex-col items-center justify-center pt-5 pb-6">
                 <UploadCloud className="w-8 h-8 mb-4 text-muted-foreground" />
                 <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">Click to upload</span> or drag and drop</p>
-                <p className="text-xs text-muted-foreground">PDF, DOC, PNG, JPG, etc. (MAX. 10MB)</p>
+                <p className="text-xs text-muted-foreground">PDF, DOC, PNG, JPG, etc. (MAX. 1MB)</p>
               </div>
               <Input id="reply-attachment-input" type="file" className="hidden" onChange={handleFileChange} />
             </label>

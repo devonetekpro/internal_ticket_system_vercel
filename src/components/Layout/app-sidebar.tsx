@@ -27,7 +27,7 @@ import {
   MessageCircleHeart,
   ClipboardCheck,
 } from "lucide-react";
-import { Database } from "@/lib/database.types";
+import { Database, PermissionKey } from "@/lib/database.types";
 import NavLink from "@/app/dashboard/nav-link";
 import { Badge } from "../ui/badge";
 import Link from "next/link";
@@ -41,8 +41,7 @@ type NavLinkItem = {
   href: string;
   icon: React.ElementType;
   label: string;
-  permission?: any;
-  departmentPermission?: string;
+  permission?: PermissionKey;
   badge?: number;
   exact?: boolean;
 };
@@ -59,8 +58,7 @@ export function AppSidebar({
   crmWaitingCount,
   ...props
 }: React.ComponentProps<typeof Sidebar> & { user: User; profile: Profile | null, crmWaitingCount: number }) {
-  const { hasPermission, isLoading, permissions } = usePermissions();
-  const userDepartment = permissions['department'] as string;
+  const { hasPermission, isLoading } = usePermissions();
 
   const allNavGroups: NavGroup[] = [
     {
@@ -76,24 +74,26 @@ export function AppSidebar({
           href: "/dashboard/crm-tickets",
           icon: MessageSquare,
           label: "CRM Desk",
-          departmentPermission: 'backoffice',
+          permission: "access_crm_tickets",
           badge: crmWaitingCount,
         },
         {
           href: "/dashboard/tickets",
           icon: TicketIcon,
           label: "Internal Desk",
+          permission: 'create_tickets', 
         },
         {
             href: "/dashboard/tasks",
             icon: ClipboardCheck,
             label: "Task Board",
+            permission: 'view_task_board',
         },
          {
           href: "/dashboard/live-chat",
           icon: MessageCircleHeart,
           label: "Live Chat",
-          departmentPermission: 'backoffice',
+          permission: "access_live_chat",
         },
         {
           href: "/dashboard/analytics",
@@ -137,11 +137,7 @@ export function AppSidebar({
   const navGroups = allNavGroups
     .map((group) => ({
       ...group,
-      links: group.links.filter((link) => {
-        const hasRolePerm = !link.permission || hasPermission(link.permission);
-        const hasDeptPerm = !link.departmentPermission || userDepartment === link.departmentPermission || hasPermission('manage_all_users');
-        return hasRolePerm && hasDeptPerm;
-      }),
+      links: group.links.filter((link) => !link.permission || hasPermission(link.permission)),
     }))
     .filter((group) => group.links.length > 0);
 

@@ -1,157 +1,765 @@
-/*
-================================================================================
--- HelpFlow Database Migration Script --
-================================================================================
-This script contains all the necessary SQL statements to set up the HelpFlow 
-database schema, including tables, functions, and triggers.
 
-Run this entire script in your Supabase SQL Editor to initialize your database.
-================================================================================
-*/
+-- Initial Schema from Supabase
 
+-- Create custom types
+CREATE TYPE public.user_role AS ENUM (
+    'system_admin',
+    'super_admin',
+    'admin',
+    'manager',
+    'agent',
+    'user',
+    'department_head',
+    'ceo'
+);
 
-/* 
-================================================================================
--- Section 5.1: CRM & External Ticket Linking --
-================================================================================
-*/
+CREATE TYPE public.ticket_priority AS ENUM (
+    'low',
+    'medium',
+    'high',
+    'critical'
+);
 
-/* 
-  1. ADD CRM MANAGER ID TO PROFILES
-  This adds a column to store the integer ID from the external CRM system,
-  allowing us to link a HelpFlow user to their CRM manager profile.
-*/
-ALTER TABLE public.profiles
-ADD COLUMN crm_manager_id INTEGER;
+CREATE TYPE public.ticket_status AS ENUM (
+    'open',
+    'in_progress',
+    'resolved',
+    'closed'
+);
 
-/*
-  2. ADD is_external TO internal_tickets
-  This boolean column marks a ticket as originating from the external CRM.
-*/
-ALTER TABLE public.internal_tickets
-ADD COLUMN is_external BOOLEAN NOT NULL DEFAULT false;
+-- Safely create the permission_key enum only if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'permission_key') THEN
+        CREATE TYPE public.permission_key AS ENUM (
+            'view_analytics',
+            'access_knowledge_base',
+            'create_tickets',
+            'view_all_tickets_in_department',
+            'change_ticket_status',
+            'delete_tickets',
+            'edit_ticket_properties',
+            'assign_tickets',
+            'manage_all_users',
+            'manage_users_in_department',
+            'access_admin_panel',
+            'manage_departments',
+            'manage_templates',
+            'manage_knowledge_base',
+            'manage_sla_policies',
+            'manage_chat_settings',
+            'manage_roles',
+            'access_crm_tickets',
+            'access_live_chat',
+            'view_task_board'
+        );
+    END IF;
+END
+$$;
 
-/*
-  3. ADD job_title to profiles
-  This adds a column to store the user's job title from OAuth provider.
-*/
-ALTER TABLE public.profiles
-ADD COLUMN job_title TEXT;
-
-
--- Function to get counts for CRM tickets tabs
-CREATE OR REPLACE FUNCTION get_crm_ticket_counts()
-RETURNS TABLE(opened_count bigint, opened_today_count bigint, waiting_for_response_count bigint, closed_count bigint, all_count bigint)
-LANGUAGE sql
-AS $$
-    SELECT
-        (SELECT COUNT(*) FROM crm_tickets WHERE status IN ('open', 'in_progress', 'pending support', 'pending client')) AS opened_count,
-        (SELECT COUNT(*) FROM crm_tickets WHERE created_at >= date_trunc('day', now()) AND status IN ('open', 'in_progress', 'pending support', 'pending client')) AS opened_today_count,
-        (SELECT COUNT(*) FROM crm_tickets WHERE status = 'pending support') AS waiting_for_response_count,
-        (SELECT COUNT(*) FROM crm_tickets WHERE status IN ('closed', 'resolved')) AS closed_count,
-        (SELECT COUNT(*) FROM crm_tickets) AS all_count;
+-- Add new values to the permission_key enum if they don't already exist.
+-- This makes the migration script runnable multiple times.
+DO $$
+BEGIN
+    ALTER TYPE public.permission_key ADD VALUE IF NOT EXISTS 'access_crm_tickets';
+    ALTER TYPE public.permission_key ADD VALUE IF NOT EXISTS 'access_live_chat';
+    ALTER TYPE public.permission_key ADD VALUE IF NOT EXISTS 'view_task_board';
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END
 $$;
 
 
-/* 
-================================================================================
--- Section 5.2: Kanban Board Setup --
-================================================================================
-*/
-
--- 1. Create the table for columns (e.g., Backlog, TODO)
-CREATE TABLE IF NOT EXISTS public.task_columns (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  title TEXT NOT NULL,
-  "position" INTEGER NOT NULL,
-  created_at timestamptz DEFAULT now() NOT NULL
+-- Create Departments Table
+CREATE TABLE IF NOT EXISTS public.departments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE
 );
+COMMENT ON TABLE public.departments IS 'Stores different departments within the organization.';
 
--- 2. Create the table for individual tasks
-CREATE TABLE IF NOT EXISTS public.tasks (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  column_id uuid REFERENCES public.task_columns(id) ON DELETE CASCADE NOT NULL,
+-- Create Profiles Table
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users ON DELETE CASCADE,
+    updated_at TIMESTAMPTZ,
+    username TEXT UNIQUE,
+    full_name TEXT,
+    avatar_url TEXT,
+    website TEXT,
+    job_title TEXT,
+    role public.user_role DEFAULT 'user',
+    department_id UUID REFERENCES public.departments(id) ON DELETE SET NULL,
+    crm_manager_id INT,
+
+    CONSTRAINT username_length CHECK (char_length(username) >= 3)
+);
+COMMENT ON TABLE public.profiles IS 'Profile information for each user.';
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public profiles are viewable by everyone." ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Users can insert their own profile." ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can update their own profile." ON public.profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Admins can update any profile." ON public.profiles FOR UPDATE USING (public.get_user_role(auth.uid()) IN ('system_admin', 'admin', 'ceo'));
+
+-- Create Role Permissions Table
+CREATE TABLE IF NOT EXISTS public.role_permissions (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    role public.user_role NOT NULL,
+    permission public.permission_key NOT NULL,
+    department_id UUID REFERENCES public.departments(id) ON DELETE CASCADE,
+    UNIQUE(role, permission, department_id)
+);
+COMMENT ON TABLE public.role_permissions IS 'Assigns permissions to roles, optionally scoped to a department.';
+ALTER TABLE public.role_permissions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable read access for all users" ON public.role_permissions FOR SELECT USING (true);
+
+
+-- Create SLA Policies Table
+CREATE TABLE IF NOT EXISTS public.sla_policies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    description TEXT,
+    priority public.ticket_priority NOT NULL,
+    department_id UUID REFERENCES public.departments(id) ON DELETE CASCADE,
+    response_time_minutes INT NOT NULL,
+    resolution_time_minutes INT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(priority, department_id)
+);
+COMMENT ON TABLE public.sla_policies IS 'Defines Service Level Agreement rules for tickets.';
+ALTER TABLE public.sla_policies ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow read for all users" ON public.sla_policies FOR SELECT USING (true);
+CREATE POLICY "Allow admin to manage policies" ON public.sla_policies FOR ALL USING (public.get_user_role(auth.uid()) IN ('system_admin', 'ceo'));
+
+
+-- Create Internal Tickets Table
+CREATE TABLE IF NOT EXISTS public.internal_tickets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_by UUID NOT NULL REFERENCES public.profiles(id),
+    assigned_to UUID REFERENCES public.profiles(id),
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status public.ticket_status NOT NULL DEFAULT 'open',
+    priority public.ticket_priority NOT NULL DEFAULT 'medium',
+    category TEXT,
+    tags TEXT[],
+    attachment_url TEXT,
+    is_external BOOLEAN NOT NULL DEFAULT false,
+    sla_policy_id UUID REFERENCES public.sla_policies(id) ON DELETE SET NULL
+);
+COMMENT ON TABLE public.internal_tickets IS 'Stores internal support tickets.';
+ALTER TABLE public.internal_tickets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow full access to assigned user" ON public.internal_tickets FOR ALL USING (auth.uid() = assigned_to);
+CREATE POLICY "Allow creator to manage their ticket" ON public.internal_tickets FOR ALL USING (auth.uid() = created_by);
+CREATE POLICY "Allow collaborators to view ticket" ON public.internal_tickets FOR SELECT USING (id IN (
+  SELECT internal_ticket_id FROM public.internal_ticket_collaborators WHERE user_id = auth.uid()
+));
+CREATE POLICY "Allow department members to view tickets" ON public.internal_tickets FOR SELECT USING (
+  EXISTS (
+    SELECT 1 FROM public.internal_ticket_departments itd
+    JOIN public.profiles p ON p.department_id = itd.department_id
+    WHERE itd.internal_ticket_id = internal_tickets.id AND p.id = auth.uid()
+  ) AND public.check_permission('view_all_tickets_in_department')
+);
+CREATE POLICY "Allow admins to manage all tickets" ON public.internal_tickets FOR ALL USING (public.get_user_role(auth.uid()) IN ('system_admin', 'ceo'));
+
+
+-- Create Ticket Departments Join Table
+CREATE TABLE IF NOT EXISTS public.internal_ticket_departments (
+    internal_ticket_id UUID NOT NULL REFERENCES public.internal_tickets(id) ON DELETE CASCADE,
+    department_id UUID NOT NULL REFERENCES public.departments(id) ON DELETE CASCADE,
+    PRIMARY KEY (internal_ticket_id, department_id)
+);
+COMMENT ON TABLE public.internal_ticket_departments IS 'Links internal tickets to one or more departments.';
+
+
+-- Create Ticket Collaborators Join Table
+CREATE TABLE IF NOT EXISTS public.internal_ticket_collaborators (
+    internal_ticket_id UUID NOT NULL REFERENCES public.internal_tickets(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    PRIMARY KEY (internal_ticket_id, user_id)
+);
+COMMENT ON TABLE public.internal_ticket_collaborators IS 'Stores collaborators for internal tickets.';
+
+
+-- Create CRM Tickets Table (Local Cache)
+CREATE TABLE IF NOT EXISTS public.crm_tickets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    crm_id TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status TEXT NOT NULL,
+    category TEXT,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    client_id TEXT,
+    assigned_to TEXT, -- Storing as text since it's an external ID
+    created_by TEXT, -- Storing as text since it's an external ID
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+COMMENT ON TABLE public.crm_tickets IS 'A local cache of tickets from the external CRM for performance and linking.';
+ALTER TABLE public.crm_tickets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable read access for all users" ON public.crm_tickets FOR SELECT USING (true);
+
+-- Create Ticket Links Table
+CREATE TABLE IF NOT EXISTS public.ticket_links (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    internal_ticket_id UUID NOT NULL REFERENCES public.internal_tickets(id) ON DELETE CASCADE,
+    crm_ticket_id TEXT NOT NULL REFERENCES public.crm_tickets(crm_id) ON DELETE CASCADE
+);
+COMMENT ON TABLE public.ticket_links IS 'Links internal tickets to external CRM tickets.';
+
+-- Create Ticket Comments Table
+CREATE TABLE IF NOT EXISTS public.ticket_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id),
+    internal_ticket_id UUID REFERENCES public.internal_tickets(id) ON DELETE CASCADE,
+    crm_ticket_id TEXT REFERENCES public.crm_tickets(crm_id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    attachment_url TEXT,
+    parent_id UUID REFERENCES public.ticket_comments(id) ON DELETE CASCADE,
+    is_reply BOOLEAN DEFAULT FALSE,
+    CHECK (internal_ticket_id IS NOT NULL OR crm_ticket_id IS NOT NULL)
+);
+COMMENT ON TABLE public.ticket_comments IS 'Comments on tickets, supporting both internal and CRM tickets.';
+ALTER TABLE public.ticket_comments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow read access for ticket participants" ON public.ticket_comments FOR SELECT USING (
+  internal_ticket_id IN (
+    SELECT id FROM public.internal_tickets
+  )
+);
+CREATE POLICY "Allow users to post comments" ON public.ticket_comments FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Allow users to edit their own comments" ON public.ticket_comments FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Allow admins to manage all comments" ON public.ticket_comments FOR ALL USING (public.get_user_role(auth.uid()) IN ('system_admin', 'ceo'));
+
+
+-- Create Comment Views Table
+CREATE TABLE IF NOT EXISTS public.comment_views (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    comment_id UUID NOT NULL REFERENCES public.ticket_comments(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    viewed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(comment_id, user_id)
+);
+COMMENT ON TABLE public.comment_views IS 'Tracks which user has viewed which comment.';
+
+
+-- Create Notifications Table
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    ticket_id UUID REFERENCES public.internal_tickets(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    notification_type TEXT,
+    actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL
+);
+COMMENT ON TABLE public.notifications IS 'Stores user notifications for various events.';
+
+
+-- Create Ticket History/Audit Table
+CREATE TABLE IF NOT EXISTS public.ticket_history (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ticket_id UUID NOT NULL,
+    user_id UUID NOT NULL REFERENCES public.profiles(id),
+    event_type TEXT NOT NULL,
+    details JSONB
+);
+COMMENT ON TABLE public.ticket_history IS 'Logs all changes and events related to a ticket for auditing.';
+
+
+-- Create Ticket Templates Table
+CREATE TABLE IF NOT EXISTS public.ticket_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    department_id UUID NOT NULL REFERENCES public.departments(id) ON DELETE CASCADE,
+    priority public.ticket_priority NOT NULL DEFAULT 'medium',
+    category TEXT
+);
+COMMENT ON TABLE public.ticket_templates IS 'Stores templates for creating common types of tickets.';
+
+
+-- Create Comment Templates Table
+CREATE TABLE IF NOT EXISTS public.comment_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE public.comment_templates IS 'User-specific templates for reusable comments.';
+
+
+-- Create Chats table
+CREATE TABLE IF NOT EXISTS public.chats (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id TEXT NOT NULL,
+  client_name TEXT,
+  client_email TEXT,
+  assigned_agent_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'active', -- active, resolved, escalated
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  linked_ticket_id UUID REFERENCES public.internal_tickets(id) ON DELETE SET NULL
+);
+COMMENT ON TABLE public.chats IS 'Stores live chat sessions.';
+
+
+-- Create Chat Messages table
+CREATE TABLE IF NOT EXISTS public.chat_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chat_id UUID NOT NULL REFERENCES public.chats(id) ON DELETE CASCADE,
+  sender_type TEXT NOT NULL, -- client, ai, agent
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE public.chat_messages IS 'Stores individual messages within a chat session.';
+
+
+-- Knowledge Base Tables
+CREATE TABLE IF NOT EXISTS public.knowledge_base_documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  file_name TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE public.knowledge_base_documents IS 'Stores uploaded documents for the knowledge base.';
+
+CREATE TABLE IF NOT EXISTS public.document_chunks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id UUID REFERENCES public.knowledge_base_documents(id) ON DELETE CASCADE,
   content TEXT,
-  "position" INTEGER NOT NULL,
-  created_at timestamptz DEFAULT now() NOT NULL,
-  internal_ticket_id uuid REFERENCES public.internal_tickets(id) ON DELETE SET NULL
+  embedding vector(768),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE public.document_chunks IS 'Stores text chunks and their vector embeddings for RAG.';
+
+CREATE TABLE IF NOT EXISTS public.prefilled_questions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    question TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL
+);
+COMMENT ON TABLE public.prefilled_questions IS 'Suggested questions for the public chat widget.';
+
+
+-- Create Task Board Tables
+CREATE TABLE IF NOT EXISTS public.task_columns (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    "position" INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 3. Create and run a function to seed the initial columns
-CREATE OR REPLACE FUNCTION seed_task_columns()
-RETURNS void AS $$
+CREATE TABLE IF NOT EXISTS public.tasks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    column_id UUID NOT NULL REFERENCES public.task_columns(id) ON DELETE CASCADE,
+    internal_ticket_id UUID REFERENCES public.internal_tickets(id) ON DELETE CASCADE UNIQUE,
+    content TEXT,
+    "position" INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_tickets_status ON public.internal_tickets(status);
+CREATE INDEX IF NOT EXISTS idx_tickets_priority ON public.internal_tickets(priority);
+CREATE INDEX IF NOT EXISTS idx_tickets_assigned_to ON public.internal_tickets(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_ticket_departments_ticket_id ON public.internal_ticket_departments(internal_ticket_id);
+CREATE INDEX IF NOT EXISTS idx_ticket_departments_department_id ON public.internal_ticket_departments(department_id);
+
+-- Enable pgvector extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- RLS Policies
+ALTER TABLE public.knowledge_base_documents ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow read access to all authenticated users" ON public.knowledge_base_documents FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow manage access to admins" ON public.knowledge_base_documents FOR ALL USING (public.check_permission('manage_knowledge_base'));
+
+ALTER TABLE public.document_chunks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow read access to all authenticated users" ON public.document_chunks FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow service_role to manage chunks" ON public.document_chunks FOR ALL USING (true); -- Managed by edge function
+
+ALTER TABLE public.prefilled_questions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public read access" ON public.prefilled_questions FOR SELECT USING (true);
+CREATE POLICY "Allow admins to manage" ON public.prefilled_questions FOR ALL USING (public.check_permission('manage_chat_settings'));
+
+
+-- Function to get user's role
+CREATE OR REPLACE FUNCTION public.get_user_role(p_user_id UUID)
+RETURNS TEXT AS $$
+DECLARE
+  user_role TEXT;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.task_columns) THEN
-    INSERT INTO public.task_columns (title, "position") VALUES
-    ('Backlog', 0),
-    ('TODO', 1),
-    ('In Progress', 2),
-    ('Complete', 3);
-  END IF;
+  SELECT role INTO user_role FROM public.profiles WHERE id = p_user_id;
+  RETURN user_role;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- Function to get user's department
+CREATE OR REPLACE FUNCTION public.get_user_department_id(p_user_id UUID)
+RETURNS UUID AS $$
+DECLARE
+  user_dept_id UUID;
+BEGIN
+  SELECT department_id INTO user_dept_id FROM public.profiles WHERE id = p_user_id;
+  RETURN user_dept_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- Permission checking function
+CREATE OR REPLACE FUNCTION public.check_permission(permission_key_to_check public.permission_key)
+RETURNS boolean AS $$
+DECLARE
+    user_id UUID := auth.uid();
+    user_role public.user_role;
+    user_department_id UUID;
+    has_permission BOOLEAN;
+BEGIN
+    SELECT role, department_id INTO user_role, user_department_id FROM public.profiles WHERE id = user_id;
+    
+    IF user_role IS NULL THEN
+        RETURN FALSE;
+    END IF;
+
+    -- System admins and CEOs have all permissions
+    IF user_role IN ('system_admin', 'super_admin', 'ceo') THEN
+        RETURN TRUE;
+    END IF;
+
+    -- Check for a permission that is either global or matches the user's department
+    SELECT EXISTS (
+        SELECT 1
+        FROM public.role_permissions rp
+        WHERE rp.role = user_role
+          AND rp.permission = permission_key_to_check
+          AND (rp.department_id IS NULL OR rp.department_id = user_department_id)
+    ) INTO has_permission;
+
+    RETURN has_permission;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- Function to find the least busy department head for auto-assignment
+CREATE OR REPLACE FUNCTION public.get_least_busy_department_head(dept_id UUID)
+RETURNS UUID AS $$
+DECLARE
+  head_id UUID;
+BEGIN
+  SELECT p.id INTO head_id
+  FROM public.profiles p
+  LEFT JOIN (
+    SELECT assigned_to, COUNT(*) as ticket_count
+    FROM public.internal_tickets
+    WHERE status = 'open'
+    GROUP BY assigned_to
+  ) t ON p.id = t.assigned_to
+  WHERE p.department_id = dept_id AND p.role = 'department_head'
+  ORDER BY t.ticket_count ASC NULLS FIRST
+  LIMIT 1;
+  
+  RETURN head_id;
 END;
 $$ LANGUAGE plpgsql;
 
--- 4. Run the function once to create the columns
-SELECT seed_task_columns();
+
+-- Function for RAG search
+CREATE OR REPLACE FUNCTION public.match_document_chunks (
+  query_embedding vector(768),
+  match_count int,
+  min_similarity float
+)
+RETURNS TABLE (
+  id UUID,
+  content TEXT,
+  similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    dc.id,
+    dc.content,
+    1 - (dc.embedding <=> query_embedding) as similarity
+  FROM public.document_chunks dc
+  WHERE 1 - (dc.embedding <=> query_embedding) > min_similarity
+  ORDER BY similarity DESC
+  LIMIT match_count;
+END;
+$$;
 
 
-/* 
-================================================================================
--- Section 5.3: Live Chat & Knowledge Base Setup --
-================================================================================
-*/
-
--- 1. Enable the pgvector and pg_net extensions
-CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS pg_net;
-
--- 2. Create the table for knowledge base documents (metadata)
-CREATE TABLE IF NOT EXISTS public.knowledge_base_documents (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  file_name TEXT NOT NULL,
-  content TEXT NOT NULL, -- Store the full original text content
-  created_at timestamptz DEFAULT now() NOT NULL,
-  created_by uuid REFERENCES public.profiles(id)
-);
-ALTER TABLE public.knowledge_base_documents DROP COLUMN IF EXISTS embedding;
-
--- 2.1 Create the table for document chunks (for RAG)
-CREATE TABLE IF NOT EXISTS public.document_chunks (
-  id uuid primary key default gen_random_uuid(),
-  document_id uuid references public.knowledge_base_documents(id) on delete cascade,
-  content text,
-  embedding vector(768),
-  created_at timestamp with time zone default now() not null
-);
-
--- 2.2 Create an index for faster similarity search
-CREATE INDEX IF NOT EXISTS on document_chunks USING ivfflat (embedding vector_cosine_ops);
+-- Function to get CRM ticket counts
+CREATE OR REPLACE FUNCTION public.get_crm_ticket_counts()
+RETURNS TABLE(
+    all_count BIGINT,
+    opened_count BIGINT,
+    opened_today_count BIGINT,
+    waiting_for_response_count BIGINT,
+    closed_count BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        (SELECT COUNT(*) FROM public.crm_tickets) AS all_count,
+        (SELECT COUNT(*) FROM public.crm_tickets WHERE status IN ('open', 'in_progress', 'pending support', 'pending client')) AS opened_count,
+        (SELECT COUNT(*) FROM public.crm_tickets WHERE created_at >= date_trunc('day', now()) AND status IN ('open', 'in_progress', 'pending support', 'pending client')) AS opened_today_count,
+        (SELECT COUNT(*) FROM public.crm_tickets WHERE status = 'pending support') AS waiting_for_response_count,
+        (SELECT COUNT(*) FROM public.crm_tickets WHERE status IN ('closed', 'resolved')) AS closed_count;
+END;
+$$ LANGUAGE plpgsql;
 
 
--- 3. Create the table for chat sessions
-CREATE TABLE IF NOT EXISTS public.chats (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  client_id TEXT NOT NULL, -- Could be a session ID or user ID for logged-in users
-  client_name TEXT, -- Add client_name column
-  client_email TEXT, -- Add client_email column
-  status TEXT NOT NULL DEFAULT 'active', -- e.g., 'active', 'resolved', 'escalated'
-  assigned_agent_id uuid REFERENCES public.profiles(id),
-  linked_ticket_id uuid REFERENCES public.internal_tickets(id),
-  created_at timestamptz DEFAULT now() NOT NULL,
-  updated_at timestamptz DEFAULT now() NOT NULL
-);
+-- Function to get agent performance stats
+CREATE OR REPLACE FUNCTION get_agent_performance_stats()
+RETURNS TABLE(
+    agent_id UUID,
+    agent_name TEXT,
+    agent_avatar_url TEXT,
+    total_resolved BIGINT,
+    avg_resolution_time_minutes NUMERIC
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    p.id as agent_id,
+    p.full_name as agent_name,
+    p.avatar_url as agent_avatar_url,
+    COUNT(t.id) as total_resolved,
+    COALESCE(
+      EXTRACT(EPOCH FROM AVG(t.updated_at - t.created_at)) / 60,
+      0
+    ) as avg_resolution_time_minutes
+  FROM public.internal_tickets t
+  JOIN public.profiles p ON t.assigned_to = p.id
+  WHERE t.status IN ('resolved', 'closed')
+  GROUP BY p.id;
+END;
+$$ LANGUAGE plpgsql;
 
--- 4. Create the table for chat messages
-CREATE TABLE IF NOT EXISTS public.chat_messages (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  chat_id uuid REFERENCES public.chats(id) ON DELETE CASCADE NOT NULL,
-  sender_type TEXT NOT NULL, -- 'client', 'ai', or 'agent'
-  content TEXT NOT NULL,
-  created_at timestamptz DEFAULT now() NOT NULL
-);
+-- Function to get agent SLA success rate
+CREATE OR REPLACE FUNCTION get_agent_sla_success_rate()
+RETURNS TABLE(
+    agent_id UUID,
+    sla_success_rate NUMERIC
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        t.assigned_to AS agent_id,
+        (CAST(SUM(CASE WHEN t.updated_at <= (t.created_at + (sp.resolution_time_minutes * INTERVAL '1 minute')) THEN 1 ELSE 0 END) AS NUMERIC) / COUNT(t.id)) * 100 AS sla_success_rate
+    FROM
+        public.internal_tickets t
+    JOIN
+        public.sla_policies sp ON t.sla_policy_id = sp.id
+    WHERE
+        t.status IN ('resolved', 'closed')
+        AND t.assigned_to IS NOT NULL
+    GROUP BY
+        t.assigned_to;
+END;
+$$ LANGUAGE plpgsql;
 
--- 5. Add a trigger to update the `updated_at` timestamp on the chat
-CREATE OR REPLACE FUNCTION update_chat_updated_at()
+-- Function to escalate chat to agent queue
+CREATE OR REPLACE FUNCTION public.escalate_chat_to_agent(p_chat_id UUID, p_client_name TEXT, p_client_email TEXT)
+RETURNS INT AS $$
+DECLARE
+    queue_position INT;
+BEGIN
+    -- Update the chat with client details and set status to active
+    UPDATE public.chats
+    SET 
+        client_name = p_client_name,
+        client_email = p_client_email,
+        status = 'active'
+    WHERE id = p_chat_id;
+
+    -- Calculate queue position
+    SELECT COUNT(*) + 1 INTO queue_position
+    FROM public.chats
+    WHERE status = 'active' AND assigned_agent_id IS NULL AND id != p_chat_id AND created_at < (SELECT created_at FROM public.chats WHERE id = p_chat_id);
+    
+    -- Insert a system message
+    INSERT INTO public.chat_messages(chat_id, sender_type, content)
+    VALUES (p_chat_id, 'ai', 'You have been placed in the queue to speak with a live agent. Please wait a moment.');
+
+    RETURN queue_position;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Triggers
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, full_name, avatar_url, username, email)
+  VALUES (
+    NEW.id,
+    NEW.raw_user_meta_data->>'full_name',
+    NEW.raw_user_meta_data->>'avatar_url',
+    substring(new.email from '(.*)@'),
+    NEW.email
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+
+CREATE OR REPLACE FUNCTION public.update_ticket_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS on_ticket_comment_insert ON public.ticket_comments;
+CREATE TRIGGER on_ticket_comment_insert
+  AFTER INSERT ON public.ticket_comments
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_ticket_updated_at_on_comment();
+
+CREATE OR REPLACE FUNCTION public.update_ticket_updated_at_on_comment()
+RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE public.internal_tickets
+  SET updated_at = now()
+  WHERE id = NEW.internal_ticket_id;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS before_ticket_update_set_updated_at ON public.internal_tickets;
+CREATE TRIGGER before_ticket_update_set_updated_at
+  BEFORE UPDATE ON public.internal_tickets
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_ticket_updated_at();
+
+
+CREATE OR REPLACE FUNCTION public.on_ticket_assignment()
+RETURNS TRIGGER AS $$
+DECLARE
+    creator_name TEXT;
+    assignee_name TEXT;
+BEGIN
+    SELECT full_name INTO creator_name FROM public.profiles WHERE id = NEW.created_by;
+    SELECT full_name INTO assignee_name FROM public.profiles WHERE id = NEW.assigned_to;
+
+    -- Notify the assignee
+    IF NEW.assigned_to IS NOT NULL THEN
+        INSERT INTO public.notifications(user_id, ticket_id, message, notification_type, actor_id)
+        VALUES(NEW.assigned_to, NEW.id, 'You have been assigned a new ticket: <b>' || NEW.title || '</b> by ' || creator_name, 'assignment', NEW.created_by);
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS on_new_ticket_assignment ON public.internal_tickets;
+CREATE TRIGGER on_new_ticket_assignment
+    AFTER INSERT ON public.internal_tickets
+    FOR EACH ROW
+    EXECUTE FUNCTION public.on_ticket_assignment();
+
+
+CREATE OR REPLACE FUNCTION public.on_ticket_reassignment()
+RETURNS TRIGGER AS $$
+DECLARE
+    changer_name TEXT;
+BEGIN
+    SELECT full_name INTO changer_name FROM public.profiles WHERE id = auth.uid();
+    
+    -- Notify the new assignee if the assignee has changed
+    IF NEW.assigned_to IS DISTINCT FROM OLD.assigned_to AND NEW.assigned_to IS NOT NULL THEN
+        INSERT INTO public.notifications(user_id, ticket_id, message, notification_type, actor_id)
+        VALUES(NEW.assigned_to, NEW.id, 'Ticket <b>' || NEW.title || '</b> was reassigned to you by ' || changer_name, 'assignment', auth.uid());
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS on_ticket_update_reassignment ON public.internal_tickets;
+CREATE TRIGGER on_ticket_update_reassignment
+    AFTER UPDATE ON public.internal_tickets
+    FOR EACH ROW
+    EXECUTE FUNCTION public.on_ticket_reassignment();
+
+
+CREATE OR REPLACE FUNCTION public.on_new_collaborator()
+RETURNS TRIGGER AS $$
+DECLARE
+    ticket_title TEXT;
+    adder_name TEXT;
+BEGIN
+    SELECT title INTO ticket_title FROM public.internal_tickets WHERE id = NEW.internal_ticket_id;
+    SELECT full_name INTO adder_name FROM public.profiles WHERE id = auth.uid();
+
+    -- Notify the new collaborator
+    INSERT INTO public.notifications(user_id, ticket_id, message, notification_type, actor_id)
+    VALUES(NEW.user_id, NEW.internal_ticket_id, adder_name || ' added you as a collaborator on ticket: <b>' || ticket_title || '</b>', 'collaboration', auth.uid());
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS on_new_ticket_collaborator ON public.internal_ticket_collaborators;
+CREATE TRIGGER on_new_ticket_collaborator
+    AFTER INSERT ON public.internal_ticket_collaborators
+    FOR EACH ROW
+    EXECUTE FUNCTION public.on_new_collaborator();
+
+
+CREATE OR REPLACE FUNCTION public.on_ticket_status_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    changer_name TEXT;
+    notification_message TEXT;
+    involved_user_id UUID;
+BEGIN
+    -- Only trigger if status has actually changed
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+        SELECT full_name INTO changer_name FROM public.profiles WHERE id = auth.uid();
+        notification_message := 'Status of ticket <b>' || NEW.title || '</b> was changed to ' || NEW.status || ' by ' || changer_name;
+
+        -- Notify the creator
+        IF NEW.created_by != auth.uid() THEN
+            INSERT INTO public.notifications(user_id, ticket_id, message, notification_type, actor_id)
+            VALUES(NEW.created_by, NEW.id, notification_message, 'status_change', auth.uid());
+        END IF;
+
+        -- Notify the assignee
+        IF NEW.assigned_to IS NOT NULL AND NEW.assigned_to != auth.uid() THEN
+            INSERT INTO public.notifications(user_id, ticket_id, message, notification_type, actor_id)
+            VALUES(NEW.assigned_to, NEW.id, notification_message, 'status_change', auth.uid());
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS on_ticket_update_status_change ON public.internal_tickets;
+CREATE TRIGGER on_ticket_update_status_change
+    AFTER UPDATE ON public.internal_tickets
+    FOR EACH ROW
+    EXECUTE FUNCTION public.on_ticket_status_change();
+
+
+CREATE OR REPLACE FUNCTION public.update_chat_updated_at_on_message()
 RETURNS TRIGGER AS $$
 BEGIN
   UPDATE public.chats
@@ -161,360 +769,53 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER on_new_chat_message
+DROP TRIGGER IF EXISTS on_chat_message_insert ON public.chat_messages;
+CREATE TRIGGER on_chat_message_insert
   AFTER INSERT ON public.chat_messages
   FOR EACH ROW
-  EXECUTE FUNCTION update_chat_updated_at();
-
--- 6. Add the vector search function for document chunks
-CREATE OR REPLACE FUNCTION match_document_chunks (
-  query_embedding vector(768),
-  match_count int,
-  min_similarity float
-)
-RETURNS TABLE (
-  id uuid,
-  content text,
-  similarity float
-)
-LANGUAGE sql STABLE
-AS $$
-  SELECT
-    document_chunks.id,
-    document_chunks.content,
-    1 - (document_chunks.embedding <=> query_embedding) AS similarity
-  FROM document_chunks
-  WHERE 1 - (document_chunks.embedding <=> query_embedding) > min_similarity
-  ORDER BY similarity DESC
-  LIMIT match_count;
-$$;
+  EXECUTE FUNCTION public.update_chat_updated_at_on_message();
 
 
--- 7. Add function to get queue position
-CREATE OR REPLACE FUNCTION escalate_chat_to_agent(
-    p_chat_id uuid,
-    p_client_name text,
-    p_client_email text
-)
-RETURNS integer AS $$
-DECLARE
-  queue_position integer;
+CREATE OR REPLACE FUNCTION public.handle_document_upload()
+RETURNS TRIGGER AS $$
 BEGIN
-  -- Update the chat status and client info
-  UPDATE public.chats
-  SET 
-    status = 'active', -- 'active' now means waiting for an agent
-    client_name = p_client_name,
-    client_email = p_client_email
-  WHERE id = p_chat_id;
-
-  -- Calculate the queue position
-  SELECT count(*)
-  INTO queue_position
-  FROM public.chats
-  WHERE
-    status = 'active'
-    AND assigned_agent_id IS NULL
-    AND created_at <= (SELECT created_at FROM public.chats WHERE id = p_chat_id);
-
-  RETURN queue_position;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-
--- 8. Add background processing trigger for knowledge base documents
-CREATE OR REPLACE FUNCTION process_new_document()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER AS $$
-DECLARE
-    webhook_url text;
-BEGIN
-    -- IMPORTANT: Replace with your actual Edge Function URL and Service Role Key
-    webhook_url := 'https://<your-project-ref>.supabase.co/functions/v1/embed-document';
-
-    -- Use pg_net to call the Edge Function asynchronously
-    -- Ensure you have enabled the pg_net extension in your database
     PERFORM net.http_post(
-        url := webhook_url,
+        url := supabase_url() || '/functions/v1/embed-document',
         headers := jsonb_build_object(
-            'Content-Type', 'application/json',
-            'Authorization', 'Bearer ' || '<your-service-role-key>'
+            'Authorization', 'Bearer ' || supabase_service_role_key(),
+            'Content-Type', 'application/json'
         ),
-        body := jsonb_build_object('documentId', NEW.id, 'content', NEW.content)
+        body := jsonb_build_object(
+            'documentId', NEW.id,
+            'content', NEW.content
+        )
     );
     RETURN NEW;
 END;
-$$;
+$$ LANGUAGE plpgsql;
 
--- Create the trigger that fires after a new document is inserted
-CREATE OR REPLACE TRIGGER on_document_insert
+DROP TRIGGER IF EXISTS on_document_upload ON public.knowledge_base_documents;
+CREATE TRIGGER on_document_upload
 AFTER INSERT ON public.knowledge_base_documents
 FOR EACH ROW
-EXECUTE FUNCTION process_new_document();
+EXECUTE FUNCTION public.handle_document_upload();
 
 
-/* 
-================================================================================
--- Section 5.4: Prefilled Questions Setup --
-================================================================================
-*/
-
--- Create the table for prefilled chat questions
-CREATE TABLE IF NOT EXISTS public.prefilled_questions (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  question TEXT NOT NULL,
-  created_at timestamptz DEFAULT now() NOT NULL,
-  created_by uuid REFERENCES public.profiles(id)
-);
-
-
-/* 
-================================================================================
--- Section 5.5: Department Seeding --
-================================================================================
-*/
-
-CREATE OR REPLACE FUNCTION seed_departments()
+CREATE OR REPLACE FUNCTION public.seed_task_columns()
 RETURNS void AS $$
-DECLARE
-  depts TEXT[] := ARRAY[
-    'Finance', 'Business Development', 'BackOffice', 'Marketing', 
-    'Administration', 'Compliance', 'Human Resources', 
-    'Information Technology', 'Operation', 'Dealing', 'Sales'
-  ];
-  dept_name TEXT;
 BEGIN
-  FOREACH dept_name IN ARRAY depts
-  LOOP
-    INSERT INTO public.departments (name)
-    VALUES (dept_name)
-    ON CONFLICT (name) DO NOTHING;
-  END LOOP;
+    INSERT INTO public.task_columns (title, "position")
+    VALUES
+        ('Backlog', 0),
+        ('To Do', 1),
+        ('In Progress', 2),
+        ('Done', 3)
+    ON CONFLICT (title) DO NOTHING;
 END;
 $$ LANGUAGE plpgsql;
 
--- Run the function once to create the departments
-SELECT seed_departments();
+-- Seed initial data
+SELECT public.seed_task_columns();
 
-
-/* 
-================================================================================
--- Section 5.6: Database Triggers & Functions --
-================================================================================
-*/
-
-/* 
-  1. REMOVE OLD NEW USER PROFILE TRIGGER
-  This function is no longer needed as the profile creation is now handled
-  by a server-side function in the Next.js auth callback.
-*/
-drop trigger if exists on_auth_user_created on auth.users;
-drop function if exists public.handle_new_user();
-
-
-/* 
-  2. TICKET ASSIGNMENT TRIGGER
-  Notifies a user when a ticket is assigned to them.
-*/
-CREATE OR REPLACE FUNCTION public.handle_ticket_assignment_notification()
-RETURNS TRIGGER AS $$
-DECLARE
-  creator_name TEXT;
-  notification_message TEXT;
-BEGIN
-  -- Check if it's an INSERT or if the 'assigned_to' field has been changed on UPDATE
-  IF (TG_OP = 'INSERT' AND NEW.assigned_to IS NOT NULL) OR 
-     (TG_OP = 'UPDATE' AND NEW.assigned_to IS DISTINCT FROM OLD.assigned_to AND NEW.assigned_to IS NOT NULL) THEN
-
-    -- Get the name of the user who triggered the action (the creator or updater)
-    SELECT p.full_name INTO creator_name
-    FROM public.profiles p
-    WHERE p.id = auth.uid();
-    
-    -- If the creator's name is not found, use a default
-    IF creator_name IS NULL THEN
-      creator_name := 'The system';
-    END IF;
-
-    -- Create the notification message
-    notification_message := 'assigned you a new ticket: <b>' || NEW.title || '</b>';
-
-    -- Insert the new notification
-    INSERT INTO public.notifications (user_id, ticket_id, message, notification_type, actor_id)
-    VALUES (NEW.assigned_to, NEW.id, notification_message, 'assignment', auth.uid());
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Drop trigger first to ensure it's not duplicated
-DROP TRIGGER IF EXISTS on_ticket_assignment ON public.internal_tickets;
--- Create the trigger that executes the function
-CREATE TRIGGER on_ticket_assignment
-  AFTER INSERT OR UPDATE ON public.internal_tickets
-  FOR EACH ROW
-  EXECUTE FUNCTION public.handle_ticket_assignment_notification();
-
-
-/*
-  3. COLLABORATOR ADDITION TRIGGER
-  Notifies a user when they are added as a collaborator to a ticket.
-*/
-CREATE OR REPLACE FUNCTION public.handle_collaborator_notification()
-RETURNS TRIGGER AS $$
-DECLARE
-  actor_name TEXT;
-  ticket_title TEXT;
-  notification_message TEXT;
-BEGIN
-  -- Find the name of the user performing the action (the one adding the collaborator)
-  SELECT p.full_name INTO actor_name
-  FROM public.profiles p
-  WHERE p.id = auth.uid();
-  
-  IF actor_name IS NULL THEN
-    actor_name := 'A user';
-  END IF;
-
-  -- Get the title of the ticket
-  SELECT t.title INTO ticket_title
-  FROM public.internal_tickets t
-  WHERE t.id = NEW.internal_ticket_id;
-
-  -- Create the notification message
-  notification_message := 'added you as a collaborator on ticket: <b>' || ticket_title || '</b>';
-
-  -- Insert the notification for the new collaborator
-  INSERT INTO public.notifications (user_id, ticket_id, message, notification_type, actor_id)
-  VALUES (NEW.user_id, NEW.internal_ticket_id, notification_message, 'collaboration', auth.uid());
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Drop trigger first to ensure it's not duplicated
-DROP TRIGGER IF EXISTS on_new_collaborator ON public.internal_ticket_collaborators;
--- Create the trigger that executes the function
-CREATE TRIGGER on_new_collaborator
-  AFTER INSERT ON public.internal_ticket_collaborators
-  FOR EACH ROW
-  EXECUTE FUNCTION public.handle_collaborator_notification();
-
-
-/*
-  4. TICKET STATUS CHANGE TRIGGER (FOR CREATOR)
-  Notifies the original ticket creator when their ticket is resolved or closed.
-*/
-CREATE OR REPLACE FUNCTION public.handle_ticket_status_change_notification()
-RETURNS TRIGGER AS $$
-DECLARE
-  actor_name TEXT;
-  notification_message TEXT;
-BEGIN
-  -- Proceed only if the status has changed to 'resolved' or 'closed'
-  IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status AND (NEW.status = 'resolved' OR NEW.status = 'closed') THEN
-
-    -- Get the name of the user who made the change
-    SELECT p.full_name INTO actor_name
-    FROM public.profiles p
-    WHERE p.id = auth.uid();
-    
-    IF actor_name IS NULL THEN
-      actor_name := 'The system';
-    END IF;
-
-    -- Do not send a notification if the creator is the one closing their own ticket
-    IF NEW.created_by = auth.uid() THEN
-      RETURN NEW;
-    END IF;
-    
-    -- Create the notification message
-    notification_message := '<b>' || actor_name || '</b> marked your ticket as ' || NEW.status || ': <b>' || NEW.title || '</b>';
-
-    -- Insert the notification for the ticket creator
-    INSERT INTO public.notifications (user_id, ticket_id, message, notification_type, actor_id)
-    VALUES (NEW.created_by, NEW.id, notification_message, 'status_change', auth.uid());
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Drop trigger first to ensure it's not duplicated
-DROP TRIGGER IF EXISTS on_ticket_status_change ON public.internal_tickets;
--- Create the trigger that executes the function
-CREATE TRIGGER on_ticket_status_change
-  AFTER UPDATE ON public.internal_tickets
-  FOR EACH ROW
-  EXECUTE FUNCTION public.handle_ticket_status_change_notification();
-
-
--- Drop the function if it exists to ensure a clean update
-DROP FUNCTION IF EXISTS get_agent_performance_stats();
-
--- 1. Main function to get agent performance stats
-CREATE OR REPLACE FUNCTION get_agent_performance_stats()
-RETURNS TABLE (
-    agent_id uuid,
-    agent_name text,
-    agent_avatar_url text,
-    total_resolved bigint,
-    avg_resolution_time_minutes double precision
-)
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    RETURN QUERY
-    SELECT
-        p.id AS agent_id,
-        p.full_name AS agent_name,
-        p.avatar_url AS agent_avatar_url,
-        COUNT(t.id) FILTER (WHERE t.status IN ('resolved', 'closed')) AS total_resolved,
-        COALESCE(
-            AVG(
-                EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 60
-            ) FILTER (WHERE t.status IN ('resolved', 'closed')),
-            0
-        )::double precision AS avg_resolution_time_minutes
-    FROM
-        public.profiles p
-    LEFT JOIN
-        public.internal_tickets t ON p.id = t.assigned_to
-    WHERE
-        p.role IN ('agent', 'manager', 'department_head', 'admin', 'system_admin', 'super_admin', 'ceo')
-    GROUP BY
-        p.id, p.full_name, p.avatar_url
-    ORDER BY
-        total_resolved DESC;
-END;
-$$;
-
--- Drop the function if it exists to ensure a clean update
-DROP FUNCTION IF EXISTS get_agent_sla_success_rate();
-
--- 2. Function to calculate SLA success rate per agent
-CREATE OR REPLACE FUNCTION get_agent_sla_success_rate()
-RETURNS TABLE(agent_id uuid, sla_success_rate numeric)
-LANGUAGE sql
-AS $$
-    WITH ticket_sla_status AS (
-        SELECT
-            t.assigned_to,
-            CASE
-                WHEN t.status IN ('resolved', 'closed') AND t.updated_at <= (t.created_at + (sp.resolution_time_minutes * INTERVAL '1 minute')) THEN 1
-                WHEN t.status IN ('resolved', 'closed') THEN 0
-                ELSE NULL
-            END AS sla_met
-        FROM internal_tickets t
-        JOIN sla_policies sp ON t.sla_policy_id = sp.id
-        WHERE t.assigned_to IS NOT NULL AND t.sla_policy_id IS NOT NULL
-    )
-    SELECT
-        s.assigned_to as agent_id,
-        (SUM(s.sla_met)::decimal / COUNT(s.sla_met)) * 100 AS sla_success_rate
-    FROM ticket_sla_status s
-    WHERE s.sla_met IS NOT NULL
-    GROUP BY s.assigned_to;
-$$;
+-- Insert departments if they don't exist
+INSERT INTO public.departments (name) VALUES ('BackOffice'), ('IT Support'), ('Customer Support'), ('Finance'), ('Compliance'), ('HR'), ('Marketing') ON CONFLICT(name) DO NOTHING;

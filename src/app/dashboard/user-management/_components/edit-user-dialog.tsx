@@ -1,3 +1,4 @@
+
 'use client'
 
 import React, { useState } from 'react'
@@ -35,13 +36,14 @@ import type { Database } from "@/lib/database.types"
 import { updateUserProfile } from "../[id]/_actions/update-user-profile"
 import { Loader2 } from "lucide-react"
 import { handleProfileUpdate } from '../_actions/revalidate-users'
+import { allUserRoles } from '@/lib/database.types'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 type Department = Database['public']['Tables']['departments']['Row']
 type UserRole = Database['public']['Enums']['user_role']
 
 const formSchema = z.object({
-  role: z.enum(["ceo", "system_admin", "super_admin", "admin", "department_head", "manager", "agent", "user"]),
+  role: z.enum(allUserRoles as [string, ...string[]]),
   department_id: z.string().nullable(),
 })
 
@@ -50,8 +52,6 @@ interface EditUserDialogProps {
   departments: Department[]
   children: React.ReactNode
 }
-
-const userRoles: UserRole[] = ["ceo", "system_admin", "super_admin", "admin", "department_head", "manager", "agent", "user"]
 
 export default function EditUserDialog({ profile, departments, children }: EditUserDialogProps) {
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -128,7 +128,7 @@ export default function EditUserDialog({ profile, departments, children }: EditU
                                         </SelectTrigger>
                                         </FormControl>
                                         <SelectContent>
-                                            {userRoles.map((role) => (
+                                            {allUserRoles.map((role) => (
                                                 <SelectItem key={role} value={role}>
                                                     {formatRole(role)}
                                                 </SelectItem>

@@ -15,6 +15,20 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { usePermissions } from '@/components/providers/permissions-provider'
+import { deleteTicket } from '../_actions/delete-ticket'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Loader2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 type ProfileStub = {
     id: string;
@@ -38,22 +52,40 @@ interface InternalTicketViewProps {
     onCommentPosted: (comment: CommentWithProfiles) => void
     onStatusChange: (status: string) => void
     onCollaboratorsChange: (collaborators: TicketCollaboratorWithProfile[]) => void
-    isTicketOnBoard: boolean
     onRefresh: () => void;
+    isTicketOnBoard: boolean
     isRefreshing: boolean;
 }
 
-export default function InternalTicketView({ ticket, currentUser, allUsers, userRole, onCommentPosted, onStatusChange, onCollaboratorsChange, isTicketOnBoard, onRefresh, isRefreshing }: InternalTicketViewProps) {
+export default function InternalTicketView({ ticket, currentUser, allUsers, userRole, onCommentPosted, onStatusChange, onCollaboratorsChange, onRefresh, isTicketOnBoard, isRefreshing }: InternalTicketViewProps) {
     const [replyingTo, setReplyingTo] = React.useState<CommentWithProfiles | null>(null)
+    const [isDeleting, setIsDeleting] = React.useState(false);
     const { hasPermission } = usePermissions();
+    const router = useRouter();
 
     const canCloseTicket = hasPermission('change_ticket_status');
     const canEditTicket = hasPermission('edit_ticket_properties');
-    const canDeleteTicket = hasPermission('delete_tickets');
+    
+    // Deletion permissions: creator, system_admin, super_admin, ceo
+    const isCreator = ticket.created_by === currentUser.id;
+    const canDeleteTicket = isCreator || hasPermission('delete_tickets'); // Assuming 'delete_tickets' is configured for admins
+
 
     const handleShare = () => {
         navigator.clipboard.writeText(window.location.href)
         toast.success('Ticket URL copied to clipboard!')
+    }
+    
+    const handleDeleteTicket = async () => {
+        setIsDeleting(true);
+        const result = await deleteTicket(ticket.id);
+        if (result.success) {
+            toast.success(result.message);
+            router.push('/dashboard/tickets');
+        } else {
+            toast.error(result.message);
+            setIsDeleting(false);
+        }
     }
     
     return (
@@ -85,9 +117,29 @@ export default function InternalTicketView({ ticket, currentUser, allUsers, user
                         </Button>
                     )}
                      {canDeleteTicket && (
-                        <Button variant="destructive" asChild>
-                           <span className='flex items-center'><Trash2 className="mr-2 h-4 w-4" /> Delete</span>
-                        </Button>
+                         <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" disabled={isDeleting}>
+                                    {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4" />}
+                                    Delete
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This action cannot be undone. This will permanently delete this ticket and all of its associated data.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleDeleteTicket} className="bg-destructive hover:bg-destructive/90">
+                                        {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                        Delete Ticket
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     )}
                 </div>
             </div>
@@ -136,6 +188,7 @@ export default function InternalTicketView({ ticket, currentUser, allUsers, user
                     onSetReplyingTo={setReplyingTo}
                     onCommentPosted={onCommentPosted}
                     onCollaboratorsChange={onCollaboratorsChange}
+                    onCommentRefresh={onRefresh}
                     isTicketOnBoard={isTicketOnBoard}
                 />
             </div>

@@ -1,4 +1,5 @@
 
+
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
@@ -9,7 +10,7 @@ import { redirect } from 'next/navigation'
 const formSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(10),
-  departmentIds: z.array(z.string()).optional(),
+  departmentId: z.string().min(1),
   category: z.string().min(1),
   priority: z.enum(["low", "medium", "high", "critical"]),
   assigned_to: z.string().min(1),
@@ -23,21 +24,16 @@ type Result = {
 }
 
 async function findDepartmentHead(departmentId: string): Promise<string | null> {
-    const supabase = await createClient()
+    const supabase = await createClient();
     const { data, error } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('department_id', departmentId)
-        .eq('role', 'department_head')
-        .limit(1)
-        .single()
+        .rpc('get_least_busy_department_head', { dept_id: departmentId });
 
     if (error) {
-        console.error("Error finding department head:", error)
-        return null
+        console.error("Error finding department head:", error);
+        return null;
     }
-
-    return data?.id ?? null
+    
+    return data as string | null;
 }
 
 export async function updateTicket(ticketId: string, formData: FormData): Promise<Result> {
@@ -51,7 +47,7 @@ export async function updateTicket(ticketId: string, formData: FormData): Promis
   const rawFormData = {
     title: formData.get('title'),
     description: formData.get('description'),
-    departmentIds: formData.getAll('departmentIds[]'),
+    departmentId: formData.get('departmentId'),
     category: formData.get('category'),
     priority: formData.get('priority'),
     assigned_to: formData.get('assigned_to'),
@@ -65,23 +61,22 @@ export async function updateTicket(ticketId: string, formData: FormData): Promis
     return { success: false, message: `Invalid form data: ${parsed.error.message}` }
   }
 
-  const { collaborators, departmentIds, assigned_to, ...ticketValues } = parsed.data
+  const { collaborators, departmentId, assigned_to, ...ticketValues } = parsed.data
 
   try {
     let assignedToId = assigned_to === 'auto-assign' || !assigned_to ? null : assigned_to
-    if (assigned_to === 'auto-assign' && departmentIds && departmentIds.length > 0) {
-        assignedToId = await findDepartmentHead(departmentIds[0])
+    if (assigned_to === 'auto-assign' && departmentId) {
+        assignedToId = await findDepartmentHead(departmentId)
     }
 
     let slaPolicyId: string | null = null;
-    if (departmentIds && departmentIds.length > 0) {
-        // Find the matching SLA policy
+    if (departmentId) {
         const { data: slaPolicy } = await supabase
             .from('sla_policies')
             .select('id')
             .eq('priority', ticketValues.priority)
-            .or(`department_id.eq.${departmentIds[0]},department_id.is.null`)
-            .order('department_id', { nulls: 'last' }) // Prioritize department-specific policies
+            .or(`department_id.eq.${departmentId},department_id.is.null`)
+            .order('department_id', { nulls: 'last' })
             .limit(1)
             .single();
         slaPolicyId = slaPolicy?.id ?? null;
@@ -95,26 +90,16 @@ export async function updateTicket(ticketId: string, formData: FormData): Promis
       sla_policy_id: slaPolicyId,
     }
 
-    // 1. Update the main ticket details. The trigger will handle assignment notifications.
     const { error: updateError } = await supabase.from('internal_tickets').update(ticketData).eq('id', ticketId)
     if (updateError) throw new Error(`Failed to update ticket: ${updateError.message}`)
 
-    // 2. Handle department assignments
-    const { data: existingDepartments } = await supabase.from('internal_ticket_departments').select('department_id').eq('internal_ticket_id', ticketId);
-    const existingDeptIds = existingDepartments?.map(d => d.department_id) ?? [];
-    const newDeptIds = departmentIds ?? [];
-
-    const deptsToAdd = newDeptIds.filter(id => !existingDeptIds.includes(id)).map(id => ({ internal_ticket_id: ticketId, department_id: id }));
-    const deptsToRemove = existingDeptIds.filter(id => !newDeptIds.includes(id));
-
-    if (deptsToAdd.length > 0) {
-        await supabase.from('internal_ticket_departments').insert(deptsToAdd);
-    }
-    if (deptsToRemove.length > 0) {
-        await supabase.from('internal_ticket_departments').delete().eq('internal_ticket_id', ticketId).in('department_id', deptsToRemove);
+    // Handle department assignment (delete old, insert new)
+    if (departmentId) {
+        await supabase.from('internal_ticket_departments').delete().eq('internal_ticket_id', ticketId);
+        await supabase.from('internal_ticket_departments').insert({ internal_ticket_id: ticketId, department_id: departmentId });
     }
 
-    // 3. Handle collaborators. The trigger will handle notifications.
+
     const { data: existingCollaborators } = await supabase.from('internal_ticket_collaborators').select('user_id').eq('internal_ticket_id', ticketId);
     const existingCollabIds = existingCollaborators?.map(c => c.user_id) ?? [];
     const newCollabIds = collaborators ?? [];

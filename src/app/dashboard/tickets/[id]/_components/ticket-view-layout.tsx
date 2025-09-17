@@ -1,4 +1,5 @@
 
+
 'use client'
 
 import React from 'react'
@@ -29,6 +30,7 @@ import {
   Download,
   Loader2,
   ClipboardCheck,
+  RefreshCcw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -63,6 +65,7 @@ interface TicketViewLayoutProps {
     onSetReplyingTo: (comment: CommentWithProfiles | null) => void
     onCommentPosted: (comment: CommentWithProfiles) => void
     onCollaboratorsChange: (collaborators: TicketCollaboratorWithProfile[]) => void
+    onCommentRefresh: () => void;
     showActivityFeed?: boolean
     isTicketOnBoard: boolean
 }
@@ -327,12 +330,20 @@ export default function TicketViewLayout({
     onSetReplyingTo, 
     onCommentPosted,
     onCollaboratorsChange,
+    onCommentRefresh,
     showActivityFeed = true,
     isTicketOnBoard,
 }: TicketViewLayoutProps) {
   const [showAllComments, setShowAllComments] = React.useState(false);
   const [isAddingToBoard, setIsAddingToBoard] = React.useState(false);
+  const [isRefreshing, startTransition] = React.useTransition();
   const { hasPermission } = usePermissions();
+
+  const handleCommentRefresh = () => {
+      startTransition(() => {
+          onCommentRefresh();
+      });
+  }
 
   const getAssigneeName = (ticket: TicketDetails) => {
     if (ticket.assigned_to_profile) return ticket.assigned_to_profile.full_name ?? ticket.assigned_to_profile.username
@@ -447,7 +458,12 @@ export default function TicketViewLayout({
           {showActivityFeed && (
             <>
               <div className="space-y-6">
-                  <h2 className="text-2xl font-bold flex items-center gap-2"><MessageSquare className="h-6 w-6"/> Activity</h2>
+                <div className="flex items-center gap-2">
+                    <h2 className="text-2xl font-bold flex items-center gap-2"><MessageSquare className="h-6 w-6"/> Activity</h2>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCommentRefresh} disabled={isRefreshing}>
+                        <RefreshCcw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    </Button>
+                </div>
                   <div className="space-y-2">
                     {comments.length > 0 ? (
                         <>

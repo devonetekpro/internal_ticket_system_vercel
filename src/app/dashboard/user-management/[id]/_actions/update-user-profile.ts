@@ -1,13 +1,14 @@
 
-
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { allUserRoles, type UserRole } from '@/lib/database.types';
+import { canManage } from '@/lib/utils';
 
 const updateProfileSchema = z.object({
-  role: z.enum(["ceo", "system_admin", "super_admin", "admin", "department_head", "manager", "agent", "user"]),
+  role: z.enum(allUserRoles as [string, ...string[]]),
   department_id: z.string().uuid().nullable(),
 })
 
@@ -35,8 +36,8 @@ export async function updateUserProfile(
     .single()
 
   const managingUserRole = currentUserProfile?.role
-  if (!managingUserRole || !['system_admin', 'super_admin', 'admin', 'department_head', 'manager', 'ceo'].includes(managingUserRole)) {
-    return { success: false, message: 'You do not have permission to update user profiles.' }
+  if (!managingUserRole) {
+    return { success: false, message: 'Could not determine your role.' };
   }
   
   // 2. Fetch the profile of the user being edited
@@ -46,38 +47,22 @@ export async function updateUserProfile(
     .eq('id', userId)
     .single()
 
-  if (targetUserError) {
+  if (targetUserError || !targetUserProfile || !targetUserProfile.role) {
     return { success: false, message: 'Could not find the user to update.'}
   }
 
-  // 3. Enforce Hierarchy Rules (skip for CEO and System Admin)
-  if (!['system_admin', 'super_admin', 'ceo'].includes(managingUserRole)) {
-    if (managingUserRole === 'manager') {
-        if (targetUserProfile?.department_id !== currentUserProfile?.department_id) {
-            return { success: false, message: "You can only manage users in your own department." }
-        }
-        if (['system_admin', 'super_admin', 'admin', 'department_head', 'ceo'].includes(data.role)) {
-            return { success: false, message: "You cannot promote users to a higher-level administrative role." }
-        }
-    }
+  // 3. Enforce Hierarchy Rules using the canManage helper
+  if (!canManage(managingUserRole, targetUserProfile.role)) {
+    return { success: false, message: 'You do not have permission to modify this user.'}
+  }
 
-    if (managingUserRole === 'department_head') {
-        if (targetUserProfile?.department_id !== currentUserProfile?.department_id && targetUserProfile.role !== 'manager') {
-            return { success: false, message: "You can only manage managers and users within your own department."}
-        }
-        if (['system_admin', 'super_admin', 'ceo', 'admin'].includes(data.role)) {
-             return { success: false, message: "You cannot assign system-wide administrative roles." }
-        }
-    }
-    
-    if (managingUserRole === 'admin') {
-        if (['system_admin', 'super_admin', 'ceo'].includes(targetUserProfile.role ?? '')) {
-            return { success: false, message: "You cannot modify a System Admin, Super Admin or CEO." }
-        }
-        if (['system_admin', 'super_admin', 'ceo'].includes(data.role)) {
-             return { success: false, message: "You do not have permission to create a System Admin, Super Admin or CEO."}
-        }
-    }
+  const newRole = data.role;
+  // Prevent escalation: check if the new role is one the current admin is allowed to assign.
+  if (managingUserRole === 'admin' && ['system_admin', 'ceo'].includes(newRole)) {
+      return { success: false, message: "You do not have permission to assign a user to this role."};
+  }
+  if (managingUserRole === 'ceo' && newRole === 'system_admin') {
+      return { success: false, message: "You do not have permission to assign a user to this role."};
   }
   
   // 4. Validate input data

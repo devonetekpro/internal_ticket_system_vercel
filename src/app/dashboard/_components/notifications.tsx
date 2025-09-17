@@ -46,7 +46,7 @@ export default function Notifications() {
     const supabase = createClient()
     const [notifications, setNotifications] = useState<NotificationWithProfile[]>([]);
     const [loading, startTransition] = useTransition();
-    const { permissions, isLoading: permissionsLoading } = usePermissions();
+    const { permissions, isLoading: permissionsLoading, hasPermission } = usePermissions();
     const [isInitialLoad, setIsInitialLoad] = useState(true);
 
     // Fetch initial notifications
@@ -93,7 +93,10 @@ export default function Notifications() {
         const userDepartment = permissions['department'] as string;
         const userRole = permissions['role'] as string;
 
-        const canSeeCrmNotifs = userRole === 'super_admin' || userRole === 'ceo' || userRole === 'system_admin' || userDepartment === 'BackOffice';
+        const isBackOffice = userDepartment === 'BackOffice';
+        const isDeptHeadOfBackOffice = userRole === 'department_head' && isBackOffice;
+
+        const canSeeCrmNotifs = isBackOffice || isDeptHeadOfBackOffice || hasPermission('manage_all_users');
         
         if (!canSeeCrmNotifs) {
             return;
@@ -140,7 +143,7 @@ export default function Notifications() {
         checkForNewCrmTickets();
         const intervalId = setInterval(checkForNewCrmTickets, CRM_POLL_INTERVAL);
         return () => clearInterval(intervalId);
-    }, [router, permissions, permissionsLoading]);
+    }, [router, permissions, permissionsLoading, hasPermission]);
 
     // Realtime subscription for new notifications
     useEffect(() => {

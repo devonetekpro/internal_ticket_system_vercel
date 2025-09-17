@@ -63,7 +63,6 @@ export default function TicketCommentForm({
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [file, setFile] = React.useState<File | null>(null);
-  const [filePreview, setFilePreview] = useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   
@@ -138,8 +137,8 @@ export default function TicketCommentForm({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null;
     if (selectedFile) {
-      if (selectedFile.size > 5 * 1024 * 1024) { // 5MB limit
-        toast.error("Image size cannot exceed 5MB.")
+      if (selectedFile.size > 1 * 1024 * 1024) { // 1MB limit
+        toast.error("Image size cannot exceed 1MB.")
         return
       }
       if (!selectedFile.type.startsWith('image/')) {
@@ -148,17 +147,10 @@ export default function TicketCommentForm({
       }
       setValue('attachment', selectedFile, { shouldDirty: true, shouldValidate: true })
       setFile(selectedFile);
-      
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setFilePreview(reader.result as string)
-      }
-      reader.readAsDataURL(selectedFile)
     }
   }
 
   const removeFile = () => {
-    setFilePreview(null)
     setFile(null);
     setValue('attachment', null, { shouldDirty: true, shouldValidate: true })
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -214,38 +206,29 @@ export default function TicketCommentForm({
                 )}
             />
              <div className="p-2 border-t border-input">
-                <Controller
-                    name="attachment"
-                    control={control}
-                    render={({ field }) => (
-                        <div className="flex items-center justify-center w-full">
-                            <label htmlFor="comment-attachment-input" className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer bg-muted/50 hover:bg-muted">
-                                <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center">
-                                    <UploadCloud className="w-6 h-6 mb-2 text-muted-foreground" />
-                                    <p className="text-xs text-muted-foreground"><span className="font-semibold">Click to upload</span> or drag and drop</p>
-                                </div>
-                                <Input id="comment-attachment-input" type="file" className="hidden" onChange={handleFileChange} ref={fileInputRef} />
-                            </label>
-                        </div> 
-                    )}
-                />
-
-                {filePreview && (
-                    <div className="mt-2 relative w-24 h-24">
-                        <Image src={filePreview} alt="File preview" fill className="object-cover rounded-md border" />
-                        <Button variant="destructive" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full" onClick={removeFile}>
-                            <X className="h-4 w-4" />
+                {file ? (
+                    <div className="flex items-center gap-3 p-2 rounded-md border bg-muted/50">
+                        <Paperclip className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                        <div className="flex-grow">
+                            <p className="text-sm font-medium truncate">{file.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                                {file.type} ({(file.size / 1024).toFixed(2)} KB)
+                            </p>
+                        </div>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={removeFile}>
+                            <Trash2 className="h-4 w-4 text-destructive"/>
                         </Button>
                     </div>
-                )}
-                {file && !filePreview && (
-                    <div className="mt-2 flex items-center p-2 bg-muted rounded-md text-sm border">
-                        <Paperclip className="h-4 w-4 mr-2" />
-                        <span className="flex-grow truncate">{file.name} - {(file.size / 1024 / 1024).toFixed(2)}MB</span>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full ml-2" onClick={removeFile}>
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                    </div>
+                ) : (
+                    <div className="flex items-center justify-center w-full">
+                        <label htmlFor="comment-attachment-input" className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer bg-muted/50 hover:bg-muted">
+                            <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center">
+                                <UploadCloud className="w-6 h-6 mb-2 text-muted-foreground" />
+                                <p className="text-xs text-muted-foreground"><span className="font-semibold">Click to upload</span> or drag and drop</p>
+                            </div>
+                            <Input id="comment-attachment-input" type="file" className="hidden" onChange={handleFileChange} ref={fileInputRef} />
+                        </label>
+                    </div> 
                 )}
              </div>
         </div>

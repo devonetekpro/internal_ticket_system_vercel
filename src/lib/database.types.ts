@@ -1,4 +1,5 @@
 
+
 export type Json =
   | string
   | number
@@ -635,18 +636,35 @@ export type Database = {
       }
       role_permissions: {
         Row: {
-          permissions: Json
+          id: number
+          created_at: string
           role: Database["public"]["Enums"]["user_role"]
+          permission: Database["public"]["Enums"]["permission_key"]
+          department_id: string | null
         }
         Insert: {
-          permissions: Json
+          id?: number
+          created_at?: string
           role: Database["public"]["Enums"]["user_role"]
+          permission: Database["public"]["Enums"]["permission_key"]
+          department_id?: string | null
         }
         Update: {
-          permissions?: Json
+          id?: number
+          created_at?: string
           role?: Database["public"]["Enums"]["user_role"]
+          permission?: Database["public"]["Enums"]["permission_key"]
+          department_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+           {
+            foreignKeyName: "role_permissions_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       task_columns: {
         Row: {
@@ -901,7 +919,7 @@ export type Database = {
             sla_success_rate: number
         }[]
       }
-      get_least_busy_agent: {
+      get_least_busy_department_head: {
         Args: { dept_id: string }
         Returns: string
       }
@@ -933,27 +951,44 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: unknown
       }
-      update_role_permissions: {
-        Args: { permissions_data: Json }
-        Returns: undefined
-      }
       escalate_chat_to_agent: {
         Args: { p_chat_id: string, p_client_name: string, p_client_email: string }
         Returns: number
       }
     }
     Enums: {
+      permission_key: 
+        | "view_analytics" 
+        | "access_knowledge_base" 
+        | "create_tickets" 
+        | "view_all_tickets_in_department" 
+        | "change_ticket_status" 
+        | "delete_tickets" 
+        | "edit_ticket_properties" 
+        | "assign_tickets" 
+        | "manage_all_users" 
+        | "manage_users_in_department" 
+        | "access_admin_panel" 
+        | "manage_departments" 
+        | "manage_templates" 
+        | "manage_knowledge_base" 
+        | "manage_sla_policies" 
+        | "manage_chat_settings" 
+        | "manage_roles"
+        | "access_crm_tickets"
+        | "access_live_chat"
+        | "view_task_board"
       ticket_priority: "low" | "medium" | "high" | "critical"
       ticket_status: "open" | "in_progress" | "resolved" | "closed"
       user_role:
         | "system_admin"
         | "super_admin"
+        | "admin"
         | "manager"
         | "agent"
         | "user"
         | "department_head"
         | "ceo"
-        | "admin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1090,6 +1125,121 @@ export type InternalTicketCollaborator =
   Database["public"]["Tables"]["internal_ticket_collaborators"]["Row"]
 export type CommentTemplate = Database["public"]["Tables"]["comment_templates"]["Row"];
 
+export type UserRole = Database["public"]["Enums"]["user_role"];
+
+// Define all possible permissions available in the system, grouped by category.
+export const permissionGroups = {
+  general: {
+    title: 'General Access',
+    permissions: {
+      view_analytics: {
+        label: 'View Analytics Page',
+        description: 'User can access the main analytics and reporting dashboard.'
+      },
+      access_knowledge_base: {
+        label: 'Access Knowledge Base',
+        description: 'User can view articles in the internal knowledge base.'
+      },
+      create_tickets: {
+        label: 'Create Tickets',
+        description: 'Allows the user to create new internal support tickets.'
+      },
+      access_crm_tickets: {
+        label: 'Access CRM Desk',
+        description: 'Allows user to view and interact with client-facing tickets.'
+      },
+       access_live_chat: {
+        label: 'Access Live Chat',
+        description: 'Allows user to view and handle incoming live chats from clients.'
+      },
+       view_task_board: {
+        label: 'View Task Board',
+        description: 'Allows user to view and manage tasks on the Kanban board.'
+      }
+    },
+  },
+  ticket_management: {
+    title: 'Ticket Management',
+    permissions: {
+      view_all_tickets_in_department: {
+        label: 'View All Tickets in Own Department',
+        description: 'Allows viewing of all tickets assigned to their department, not just their own.'
+      },
+      change_ticket_status: {
+        label: 'Change Ticket Progress Status',
+        description: 'User can change ticket status (e.g., from Open to In Progress).'
+      },
+      delete_tickets: {
+        label: 'Delete Tickets',
+        description: 'Allows permanent deletion of tickets. (Use with caution)'
+      },
+      edit_ticket_properties: {
+        label: 'Edit Ticket Details',
+        description: 'User can edit properties like Priority, Category, etc.'
+      },
+      assign_tickets: {
+        label: 'Assign Tickets to Users/Departments',
+        description: 'Allows re-assigning tickets to other users or departments.'
+      },
+    },
+  },
+  user_management: {
+    title: 'User Management',
+    permissions: {
+       manage_all_users: {
+        label: 'Manage All Users',
+        description: 'Grants access to the user management page to edit any user.'
+      },
+      manage_users_in_department: {
+        label: 'Manage Users in Own Department',
+        description: 'User can edit roles and details for other users within the same department.'
+      },
+    }
+  },
+  system_administration: {
+    title: 'System Administration',
+    permissions: {
+        access_admin_panel: {
+            label: 'Access Admin Panel',
+            description: 'Grants access to the main system administration panel.'
+        },
+        manage_departments: {
+          label: 'Manage Departments',
+          description: 'Allows creating, editing, and deleting departments within the Admin Panel.'
+        },
+        manage_templates: {
+          label: 'Manage Ticket Templates',
+          description: 'Allows creating and editing quick-start ticket templates within the Admin Panel.'
+        },
+        manage_knowledge_base: {
+          label: 'Manage Knowledge Base',
+          description: 'Allows uploading and deleting documents for the AI Assistant.'
+        },
+        manage_sla_policies: {
+          label: 'Manage SLA Policies',
+          description: 'Allows configuration of Service Level Agreement rules within the Admin Panel.'
+        },
+        manage_chat_settings: {
+          label: 'Manage Chat Settings',
+          description: 'Allows managing settings for the AI chat widget, like prefilled questions.'
+        },
+        manage_roles: {
+            label: 'Manage Roles & Permissions',
+            description: 'Grants access to this permissions page to modify what roles can do.'
+        }
+    }
+  }
+};
+
+export const allPermissionKeys = Object.values(permissionGroups).flatMap(group => Object.keys(group.permissions));
+export type PermissionKey = keyof typeof permissionGroups.general.permissions | keyof typeof permissionGroups.ticket_management.permissions | keyof typeof permissionGroups.user_management.permissions | keyof typeof permissionGroups.system_administration.permissions;
+
+
+export const allUserRoles: UserRole[] = ["system_admin", "super_admin", "admin", "ceo", "department_head", "manager", "agent", "user"];
+
+// Defines which roles can be managed by whom.
+export const manageableRoles: UserRole[] = ["admin", "ceo", "department_head", "manager", "agent", "user"];
+
 
 export const Constants = {
   graphql_public: {
@@ -1102,22 +1252,15 @@ export const Constants = {
       user_role: [
         "system_admin",
         "super_admin",
+        "admin",
         "manager",
         "agent",
         "user",
         "department_head",
         "ceo",
-        "admin",
       ],
     },
   },
 } as const
 
     
-
-    
-
-    
-
-
-

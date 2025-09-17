@@ -8,6 +8,8 @@ import type { Database } from "@/lib/database.types";
 import { redirect } from "next/navigation";
 import { getCrmTickets } from "@/services/crm-service";
 
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -35,10 +37,9 @@ export default async function DashboardLayout({
       >(),
     supabase
       .from('role_permissions')
-      .select('permissions')
-      .eq('role', (await supabase.from('profiles').select('role').eq('id', user.id).single()).data?.role ?? 'user')
-      .single(),
-    getCrmTickets({ pageSize: 1 }) // Still needed for the sidebar badge
+      .select('*')
+      .eq('role', (await supabase.from('profiles').select('role').eq('id', user.id).single()).data?.role ?? 'user'),
+    getCrmTickets({ pageSize: 1, view: 'waiting_for_response' })
   ]);
   
   const { data: profile } = profileResult;
@@ -51,7 +52,14 @@ export default async function DashboardLayout({
     redirect('/login?message=Your profile is still being created. Please wait a moment and log in again.');
   }
 
-  const initialPermissions = rolePermsData?.permissions as Record<string, boolean> ?? {};
+  const initialPermissions: Record<string, boolean> = {};
+  if (rolePermsData) {
+      rolePermsData.forEach(perm => {
+          // For now, we simplify to a true/false check. Departmental logic is handled server-side.
+          initialPermissions[perm.permission] = true;
+      });
+  }
+  
   if (profile.role) {
     initialPermissions['role'] = profile.role as any;
   }

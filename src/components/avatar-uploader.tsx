@@ -39,6 +39,10 @@ export function AvatarUploader({ user, url, initials, onUpload, onDelete }: Avat
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0]
+      if (selectedFile.size > 1 * 1024 * 1024) { // 1MB limit
+        toast.error("Image size cannot exceed 1MB.")
+        return
+      }
       if (selectedFile.type.startsWith('image/')) {
         setFile(selectedFile)
         const reader = new FileReader()

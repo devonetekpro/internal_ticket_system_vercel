@@ -18,8 +18,6 @@ export default async function EditTicketPage({ params }: { params: { id: string 
     return redirect('/login');
   }
 
-  // TODO: Check permissions to see if user can edit this ticket.
-
   const { data: ticket, error } = await supabase
     .from('internal_tickets')
     .select(`
@@ -34,7 +32,6 @@ export default async function EditTicketPage({ params }: { params: { id: string 
     notFound();
   }
   
-  // Re-shape the collaborators and departments to match the form's expectations
   const formattedTicket = {
     ...ticket,
     collaborators: ticket.collaborators.map((c: any) => ({ user_id: c.user_id })),
@@ -60,7 +57,6 @@ export default async function EditTicketPage({ params }: { params: { id: string 
       </div>
       
       <div className="grid md:grid-cols-[280px_1fr] gap-8 items-start">
-        {/* Placeholder for potential sidebar content */}
         <div></div>
         <div className="flex flex-col gap-4">
             <TicketForm mode="edit" ticket={formattedTicket as any} />

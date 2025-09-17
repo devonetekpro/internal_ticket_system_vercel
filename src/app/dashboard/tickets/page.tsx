@@ -11,6 +11,7 @@ import type { Database, Department, Profile as ProfileType } from '@/lib/databas
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import TicketTabs from './_components/ticket-tabs'
+import { checkPermission } from '@/lib/helpers/permissions'
 
 export const dynamic = 'force-dynamic';
 
@@ -114,6 +115,7 @@ export default async function TicketsPage({ searchParams }: { searchParams: { [k
     const rangedQuery = query.order('updated_at', { ascending: false }).range(from, to);
 
     // --- Parallel Data Fetching ---
+     const canCreateTickets = await checkPermission('create_tickets');
     const [
         { data, error, count },
         { data: allUsersData },
@@ -156,12 +158,14 @@ export default async function TicketsPage({ searchParams }: { searchParams: { [k
                     <h1 className="font-headline text-3xl font-bold md:text-4xl">Internal Help Desk</h1>
                     <p className="text-muted-foreground">Manage all internal support tickets.</p>
                 </div>
-                <Button asChild size="lg">
-                    <Link href="/dashboard/create-ticket">
-                        <PlusCircle className="mr-2" />
-                        Create Ticket
-                    </Link>
-                </Button>
+                 {canCreateTickets && (
+                    <Button asChild size="lg">
+                        <Link href="/dashboard/create-ticket">
+                            <PlusCircle className="mr-2" />
+                            Create Ticket
+                        </Link>
+                    </Button>
+                )}
             </div>
             
             <TicketTabs 

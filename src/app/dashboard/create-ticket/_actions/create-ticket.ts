@@ -1,4 +1,5 @@
 
+
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
@@ -10,7 +11,7 @@ import { redirect } from 'next/navigation'
 const formSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(10),
-  departmentIds: z.array(z.string()).optional(),
+  departmentId: z.string().min(1),
   category: z.string().min(1),
   priority: z.enum(["low", "medium", "high", "critical"]),
   assigned_to: z.string().min(1),
@@ -30,19 +31,14 @@ type Result = {
 async function findDepartmentHead(departmentId: string): Promise<string | null> {
     const supabase = await createClient();
     const { data, error } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('department_id', departmentId)
-        .eq('role', 'department_head')
-        .limit(1)
-        .single()
+        .rpc('get_least_busy_department_head', { dept_id: departmentId });
 
     if (error) {
-        console.error("Error finding department head:", error)
-        return null
+        console.error("Error finding department head:", error);
+        return null;
     }
-
-    return data?.id ?? null
+    
+    return data as string | null;
 }
 
 export async function createTicket(formData: FormData): Promise<Result> {
@@ -62,7 +58,7 @@ export async function createTicket(formData: FormData): Promise<Result> {
   const rawFormData = {
     title: formData.get('title'),
     description: formData.get('description'),
-    departmentIds: formData.getAll('departmentIds[]'),
+    departmentId: formData.get('departmentId'),
     category: formData.get('category'),
     priority: formData.get('priority'),
     assigned_to: formData.get('assigned_to'),
@@ -79,7 +75,7 @@ export async function createTicket(formData: FormData): Promise<Result> {
     return { success: false, message: `Invalid form data: ${parsed.error.message}` }
   }
 
-  const { collaborators, departmentIds, attachment, assigned_to, crm_ticket_id, ...ticketValues } = parsed.data
+  const { collaborators, departmentId, attachment, assigned_to, crm_ticket_id, ...ticketValues } = parsed.data
 
   try {
     let attachmentUrl: string | null = null;
@@ -93,20 +89,18 @@ export async function createTicket(formData: FormData): Promise<Result> {
     }
     
     let assignedToId = assigned_to === 'auto-assign' || !assigned_to ? null : assigned_to;
-    if (assigned_to === 'auto-assign' && departmentIds && departmentIds.length > 0) {
-        // For auto-assign, we'll pick the head of the first selected department
-        assignedToId = await findDepartmentHead(departmentIds[0])
+    if (assigned_to === 'auto-assign' && departmentId) {
+        assignedToId = await findDepartmentHead(departmentId)
     }
 
     let slaPolicyId: string | null = null;
-    if (departmentIds && departmentIds.length > 0) {
-        // Find the matching SLA policy
+    if (departmentId) {
         const { data: slaPolicy } = await supabase
             .from('sla_policies')
             .select('id')
             .eq('priority', ticketValues.priority)
-            .or(`department_id.eq.${departmentIds[0]},department_id.is.null`)
-            .order('department_id', { nulls: 'last' }) // Prioritize department-specific policies
+            .or(`department_id.eq.${departmentId},department_id.is.null`)
+            .order('department_id', { nulls: 'last' })
             .limit(1)
             .single();
         slaPolicyId = slaPolicy?.id ?? null;
@@ -121,7 +115,6 @@ export async function createTicket(formData: FormData): Promise<Result> {
       sla_policy_id: slaPolicyId,
     }
 
-    // 1. Insert the ticket. The trigger will handle the assignment notification.
     const { data: newTicket, error: insertError } = await supabase
       .from('internal_tickets')
       .insert(ticketData)
@@ -136,19 +129,16 @@ export async function createTicket(formData: FormData): Promise<Result> {
     const ticketId = newTicket.id
     const ticketTitle = newTicket.title;
 
-    // 2. Insert into the ticket_departments join table
-    if (departmentIds && departmentIds.length > 0) {
-        const departmentRecords = departmentIds.map(deptId => ({
+    if (departmentId) {
+        const { error: deptError } = await supabase.from('internal_ticket_departments').insert({
             internal_ticket_id: ticketId,
-            department_id: deptId,
-        }))
-        const { error: deptError } = await supabase.from('internal_ticket_departments').insert(departmentRecords)
+            department_id: departmentId,
+        })
         if (deptError) {
-            console.warn('Could not add ticket to departments:', deptError.message)
+            console.warn('Could not add ticket to department:', deptError.message)
         }
     }
 
-    // 3. Handle collaborators and their notifications
     if (collaborators && collaborators.length > 0) {
         const collaboratorRecords = collaborators.map(userId => ({
             internal_ticket_id: ticketId,
@@ -157,18 +147,9 @@ export async function createTicket(formData: FormData): Promise<Result> {
         const { error: collabError } = await supabase.from('internal_ticket_collaborators').insert(collaboratorRecords)
         if (collabError) {
             console.warn('Could not add collaborators:', collabError.message)
-        } else {
-             const notificationMessage = `<b>${creatorName}</b> added you as a collaborator on ticket: <b>${ticketTitle}</b>`;
-             const notifications = collaborators.map(userId => ({
-                 user_id: userId,
-                 ticket_id: ticketId,
-                 message: notificationMessage
-             }));
-             await supabase.from('notifications').insert(notifications);
         }
     }
     
-    // 4. Handle linking to a CRM ticket if escalated
     if (crm_ticket_id && ticketValues.is_external) {
       const { error: linkError } = await supabase.from('ticket_links').insert({
         internal_ticket_id: ticketId,
@@ -176,7 +157,6 @@ export async function createTicket(formData: FormData): Promise<Result> {
       });
       if (linkError) {
         console.error("Failed to link CRM ticket:", linkError);
-        // Not throwing error, as the main ticket was created. Just log it.
       }
     }
 
