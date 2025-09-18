@@ -15,7 +15,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function LoginForm() {
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const rawSearchParams = useSearchParams()
+   const searchParams = rawSearchParams ?? new URLSearchParams();
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [isMicrosoftLoading, setIsMicrosoftLoading] = React.useState(false)
   const [email, setEmail] = React.useState('')
@@ -130,18 +131,13 @@ export default function LoginForm() {
             <Loader2 className="animate-spin" />
           ) : (
             <>
-              <svg role="img" viewBox="0 0 24 24" className="mr-2 h-4 w-4">
-                <path
-                  fill="currentColor"
-                  d="M11.23 2.7l-8.46 2.05v14.5l8.46 2.05L20 18.53V5.47zm-1.12 1.63l6.53 1.57v8.43l-6.53 5.45V4.33zm-1.25.31v12.02L2.7 15.3V7.2z"
-                ></path>
-              </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M2 3h9v9H2zm9 19H2v-9h9zM21 3v9h-9V3zm0 19h-9v-9h9z"/></svg>
               Sign In with Microsoft
             </>
           )}
         </Button>
       </CardContent>
-      <CardFooter className="text-center text-sm">
+      <CardFooter className="text-center text-sm mt-4">
         <p className="w-full">
             Don't have an account?{' '}
             <Link href="/signup" className="underline">

@@ -49,7 +49,8 @@ export default function TicketFilters({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
+  const rawSearchParams = useSearchParams();
+  const searchParams = rawSearchParams ?? new URLSearchParams();
   const [isExporting, setIsExporting] = React.useState(false);
 
   const [searchQuery, setSearchQuery] = React.useState(searchParams.get('search') || '')
@@ -66,7 +67,7 @@ export default function TicketFilters({
           }
       });
       // Always reset to page 1 when filters change
-      params.set('page', '1');
+      // params.set('page', '1');
       return params.toString()
     },
     [searchParams]

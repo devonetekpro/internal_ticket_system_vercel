@@ -113,7 +113,8 @@ const CHAT_POLL_INTERVAL = 30 * 1000; // 30 seconds
 export default function LiveChatDashboardPage() {
   const supabase = createClient();
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const rawSearchParams = useSearchParams();
+    const searchParams = rawSearchParams ?? new URLSearchParams();
   const { hasPermission, isLoading: permissionsLoading } = usePermissions();
   const [chats, setChats] = useState<ChatWithProfile[]>([]);
   const [loading, setLoading] = useState(true);

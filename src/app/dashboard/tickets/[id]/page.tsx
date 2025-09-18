@@ -137,7 +137,8 @@ export default function TicketDetailsPage({
 }) {
   const supabase =  createClient()
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const rawSearchParams = useSearchParams()
+  const searchParams = rawSearchParams ?? new URLSearchParams();
   const [ticket, setTicket] = React.useState<TicketDetails | null>(null)
   const [currentUser, setCurrentUser] = React.useState<User | null>(null)
   const [allUsers, setAllUsers] = React.useState<any[]>([])

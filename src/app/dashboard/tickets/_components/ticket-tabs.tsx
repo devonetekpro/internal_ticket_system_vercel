@@ -88,33 +88,34 @@ export default function TicketTabs({
     initialTotalCount, 
     allUsers, 
     currentUserProfile,
-    counts: initialCounts,
+    counts,
 }: TicketTabsProps) {
     const router = useRouter();
     const pathname = usePathname();
-    const searchParams = useSearchParams();
+    const rawSearchParams = useSearchParams();
+    const searchParams = rawSearchParams ?? new URLSearchParams();
     const { hasPermission, isLoading: permissionsLoading } = usePermissions();
     const [isRefreshing, startTransition] = useTransition();
 
-    const [tickets, setTickets] = useState(initialTickets);
-    const [totalCount, setTotalCount] = useState(initialTotalCount);
-    const [counts, setCounts] = useState(initialCounts);
-    const [loading, setLoading] = useState(false);
+    // const [tickets, setTickets] = useState(initialTickets);
+    // const [totalCount, setTotalCount] = useState(initialTotalCount);
+    // const [counts, setCounts] = useState(initialCounts);
+    // const [loading, setLoading] = useState(false);
 
     const page = searchParams.get('page') ? Number(searchParams.get('page')) : 1;
     const pageSize = searchParams.get('pageSize') ? Number(searchParams.get('pageSize')) : 10;
     const tab = searchParams.get('tab') || 'my_tickets';
 
     // Update state when initial props change (due to server-side navigation)
-    useEffect(() => {
-        setTickets(initialTickets);
-        setTotalCount(initialTotalCount);
-        setCounts(initialCounts);
-        setLoading(false);
-    }, [initialTickets, initialTotalCount, initialCounts]);
+    // useEffect(() => {
+    //     setTickets(initialTickets);
+    //     setTotalCount(initialTotalCount);
+    //     setCounts(initialCounts);
+    //     setLoading(false);
+    // }, [initialTickets, initialTotalCount, initialCounts]);
 
     const handleTabChange = (newTab: string) => {
-        setLoading(true);
+        // setLoading(true);
         const params = new URLSearchParams(searchParams.toString());
         params.set('tab', newTab);
         params.set('page', '1'); // Reset to first page on view change
@@ -123,7 +124,7 @@ export default function TicketTabs({
 
     const handleRefresh = () => {
         startTransition(() => {
-            router.refresh();
+            router.replace(pathname + '?' + searchParams.toString());
         });
     };
 
@@ -138,8 +139,8 @@ export default function TicketTabs({
 
     return (
         <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <TabsList className="w-full sm:w-auto self-start">
+            <div className="flex flex-col lg:flex-row sm:items-center lg:justify-between gap-4">
+            <TabsList className="w-full lg:w-auto self-start overflow-x-auto lg:overflow-x-visible">
                 {tabs.map(t => (
                 <TabsTrigger key={t.value} value={t.value} className="flex-1 sm:flex-initial flex items-center gap-2">
                     {t.icon && <t.icon className={`h-4 w-4 ${t.value === 'stale' && t.count > 0 ? 'text-amber-500' : ''}`} />}
@@ -152,7 +153,7 @@ export default function TicketTabs({
                 </TabsTrigger>
                 ))}
             </TabsList>
-            <div className="w-full sm:w-auto">
+            <div className="w-full lg:w-auto  overflow-x-auto">
                 <TicketFilters 
                     currentUserProfile={currentUserProfile} 
                     onRefresh={handleRefresh}
@@ -173,15 +174,15 @@ export default function TicketTabs({
                 </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0 sm:p-6 sm:pt-0">
-                {loading || permissionsLoading || isRefreshing ? (
+                {permissionsLoading || isRefreshing ? (
                     <TicketListSkeleton />
                     ) : (
-                    <TicketList tickets={tickets} allUsers={allUsers} currentUserProfile={currentUserProfile} />
+                    <TicketList tickets={initialTickets} allUsers={allUsers} currentUserProfile={currentUserProfile} />
                     )}
                 </CardContent>
                 <CardFooter>
                 <PaginationControls
-                    totalCount={totalCount}
+                    totalCount={initialTotalCount}
                     pageSize={pageSize}
                     currentPage={page}
                     />

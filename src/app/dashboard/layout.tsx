@@ -71,11 +71,13 @@ export default async function DashboardLayout({
           } as React.CSSProperties
         }
       >
+      <div className="flex w-screen overflow-x-hidden"> 
         <AppSidebar user={user} profile={profile} crmWaitingCount={crmWaitingCount} variant="inset"/>
-        <SidebarInset>
+        <SidebarInset className="flex-1 min-w-0"> 
           <SiteHeader />
-          {children}
+          <div className="min-w-0">{children}</div>
         </SidebarInset>
+      </div>
       </SidebarProvider>
     </PermissionsProvider>
   );

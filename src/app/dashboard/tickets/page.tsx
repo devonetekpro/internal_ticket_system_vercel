@@ -44,6 +44,8 @@ export type UserProfile = ProfileType & { email?: string }
 export default async function TicketsPage({ searchParams }: { searchParams: { [key: string]: string | string[] | undefined } }) {
     const supabase = await createClient()
 
+    const params = await searchParams; // <-- this is needed
+
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
         redirect('/login')
@@ -58,13 +60,13 @@ export default async function TicketsPage({ searchParams }: { searchParams: { [k
     if (!profile) {
         redirect('/login')
     }
-    
-    const page = Number(searchParams?.page || '1');
-    const pageSize = Number(searchParams?.pageSize || '10');
-    const tab = searchParams?.tab || 'my_tickets';
-    const searchQuery = searchParams?.search || undefined;
-    const status = searchParams?.status || undefined;
-    const priority = searchParams?.priority || undefined;
+
+    const page = Number(params?.page || '1');
+    const pageSize = Number(params?.pageSize || '10');
+    const tab = params?.tab || 'my_tickets';
+    const searchQuery = params?.search || undefined;
+    const status = params?.status || undefined;
+    const priority = params?.priority || undefined;
 
     // --- Main Ticket Query ---
     let query = supabase

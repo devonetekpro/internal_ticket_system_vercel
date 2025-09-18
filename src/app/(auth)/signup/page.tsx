@@ -45,7 +45,7 @@ export default function Signup() {
         return
     }
 
-    if (data.user && !data.session) {
+    if (data.user && data.session) {
         toast.success('Please check your email to continue signing up.')
         router.push('/login')
     } else {
@@ -92,7 +92,7 @@ export default function Signup() {
             {loading ? <Loader2 className="animate-spin" /> : 'Create account'}
           </Button>
         </CardContent>
-        <CardFooter className="text-center text-sm">
+        <CardFooter className="text-center text-sm mt-4">
             <p className="w-full">
                 Already have an account?{' '}
                 <Link href="/login" className="underline">

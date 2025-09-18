@@ -170,54 +170,45 @@ export default function TaskBoard({ initialBoardData }: TaskBoardProps) {
 
     const activeId = active.id.toString();
     const overId = over.id.toString();
-
+    if (activeId === overId) return;
     const isActiveATask = active.data.current?.type === 'Task';
+    const isOverAColumn = over.data.current?.type === 'Column';
     if (!isActiveATask) return;
 
-    const isOverAColumn = over.data.current?.type === 'Column';
-    const isOverATask = over.data.current?.type === 'Task';
-
-    setColumns(prev => {
-      let newColumns = [...prev.map(c => ({...c, tasks: [...c.tasks]}))]; // Deep copy
-      
+    setColumns(columns => {
       const activeTask = tasks.find(t => t.id === activeId);
-      if (!activeTask) return prev;
+      if (!activeTask) return columns;
 
-      let sourceColumn = newColumns.find(c => c.tasks.some(t => t.id === activeId));
-      if (!sourceColumn) return prev;
-      
-      // Remove task from its original column
-      sourceColumn.tasks = sourceColumn.tasks.filter(t => t.id !== activeId);
+      const sourceColumnId = activeTask.column_id;
+      let destColumnId: string;
 
-      let targetColumnId: string;
-      let targetIndex: number;
-
-      if (isOverATask) {
-        const overTask = tasks.find(t => t.id === overId);
-        if (!overTask) return prev;
-        targetColumnId = overTask.column_id;
-        const destColumn = newColumns.find(c => c.id === targetColumnId);
-        if (!destColumn) return prev;
-        targetIndex = destColumn.tasks.findIndex(t => t.id === overId);
-        if (targetIndex === -1) targetIndex = destColumn.tasks.length;
-      } else if (isOverAColumn) {
-        targetColumnId = overId;
-        const destColumn = newColumns.find(c => c.id === targetColumnId);
-        if (!destColumn) return prev;
-        targetIndex = destColumn.tasks.length;
+      if(isOverAColumn) {
+        destColumnId = overId;
       } else {
-        // Re-insert into original column if not over a valid target
-        sourceColumn.tasks.push(activeTask);
-        return newColumns;
+        const overTask = tasks.find(t => t.id === overId);
+        if(!overTask) return columns;
+        destColumnId = overTask.column_id;
       }
-      
-      const destColumn = newColumns.find(c => c.id === targetColumnId);
-      if (!destColumn) return prev;
-      
-      activeTask.column_id = targetColumnId;
-      destColumn.tasks.splice(targetIndex, 0, activeTask);
 
-      return newColumns;
+      if(sourceColumnId === destColumnId) return columns;
+      
+      const sourceColumn = columns.find(c => c.id === sourceColumnId);
+      const destColumn = columns.find(c => c.id === destColumnId);
+
+      if(!sourceColumn || !destColumn) return columns;
+
+      const activeIndex = sourceColumn.tasks.findIndex(t => t.id === activeId);
+      sourceColumn.tasks.splice(activeIndex, 1);
+      
+      activeTask.column_id = destColumnId;
+
+      let overIndex = destColumn.tasks.findIndex(t => t.id === overId);
+      if (overIndex === -1) {
+        overIndex = destColumn.tasks.length; // If not over a task, add to end
+      }
+      destColumn.tasks.splice(overIndex, 0, activeTask);
+
+      return [...columns];
     });
   };
 

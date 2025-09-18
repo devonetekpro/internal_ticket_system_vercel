@@ -138,7 +138,9 @@ const priorityClassMap: { [key: string]: string } = {
 
 
 export default function CreateTicketPage() {
-  const searchParams = useSearchParams();
+  const rawSearchParams = useSearchParams();
+  const searchParams =  rawSearchParams ?? new URLSearchParams();
+  
   const [view, setView] = useState<'templates' | 'form'>(searchParams.has('crm_ticket_id') ? 'form' : 'templates');
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);

@@ -22,7 +22,8 @@ interface PaginationControlsProps {
 export default function PaginationControls({ totalCount, pageSize, currentPage, pageSizeOptions = [10, 25, 50, 100] }: PaginationControlsProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
+  const rawSearchParams = useSearchParams();
+    const searchParams = rawSearchParams ?? new URLSearchParams();
   
   const totalPages = Math.ceil(totalCount / pageSize)
   
@@ -49,28 +50,29 @@ export default function PaginationControls({ totalCount, pageSize, currentPage, 
 
 
   return (
-    <div className="flex items-center justify-between w-full text-sm text-muted-foreground">
-       <div className="flex-1">
+    <div className="flex flex-wrap items-center justify-between w-full text-sm text-muted-foreground gap-4">
+    <div className="flex-1">
         {/* Placeholder for selected rows count if needed in the future */}
-      </div>
-      <div className="flex items-center gap-6">
+    </div>
+    <div className="flex flex-wrap items-center gap-6">
         <div className="flex items-center gap-2">
             <span className="text-sm">Rows per page</span>
             <Select value={pageSize.toString()} onValueChange={handlePageSizeChange}>
-              <SelectTrigger className="h-8 w-[70px]">
-                <SelectValue>{pageSize}</SelectValue>
-              </SelectTrigger>
-              <SelectContent side="top">
-                {pageSizeOptions.map((size) => (
-                  <SelectItem key={size} value={size.toString()}>
-                    {size}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+                <SelectTrigger className="h-8 w-[70px]">
+                    <SelectValue>{pageSize}</SelectValue>
+                </SelectTrigger>
+                <SelectContent side="top">
+                    {pageSizeOptions.map((size) => (
+                        <SelectItem key={size} value={size.toString()}>
+                            {size}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
             </Select>
         </div>
 
-        <div className="font-medium">
+        <div className='flex flex-row gap-4 items-center'>
+          <div className="font-medium">
             Page {currentPage} of {totalPages}
         </div>
 
@@ -117,7 +119,9 @@ export default function PaginationControls({ totalCount, pageSize, currentPage, 
                 <ChevronsRight className="h-4 w-4" />
             </Button>
         </div>
-      </div>
+        </div>
+        
     </div>
+</div>
   )
 }

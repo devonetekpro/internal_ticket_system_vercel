@@ -77,7 +77,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={cn('font-body antialiased', inter.variable, spaceGrotesk.variable)}>
-        <NextTopLoader color="hsl(var(--primary))" showSpinner={false} />
+        <NextTopLoader color="#c96442" showSpinner={false} />
         <Providers>
           {children}
           <Toaster />

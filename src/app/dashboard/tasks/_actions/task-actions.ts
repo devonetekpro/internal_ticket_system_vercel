@@ -66,7 +66,7 @@ export async function getTaskBoardData(): Promise<TaskColumn[]> {
     console.error('Error fetching tasks:', tasksError);
   }
 
-  console.log('Fetched Tasks Data from DB:', JSON.stringify(tasksData, null, 2));
+  // console.log('Fetched Tasks Data from DB:', JSON.stringify(tasksData, null, 2));
 
   const tasks = (tasksData as Task[]) ?? [];
 
@@ -83,7 +83,7 @@ export async function getTaskBoardData(): Promise<TaskColumn[]> {
 
 export async function createTask(columnId: string, content: string, internalTicketId?: string) {
     const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient();
 
     const { data: maxPositionResult } = await supabase
         .from('tasks')
@@ -114,7 +114,7 @@ export async function createTask(columnId: string, content: string, internalTick
 
 export async function addTicketToTaskBoard(ticketId: string, ticketTitle: string) {
     const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient();
 
     // 1. Check if a task for this ticket already exists
     const { data: existingTask, error: checkError } = await supabase
@@ -153,7 +153,7 @@ export async function addTicketToTaskBoard(ticketId: string, ticketTitle: string
 
 export async function updateTaskOrder(tasksToUpdate: { id: string; position: number; column_id: string }[]) {
   const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  const supabase = await createClient();
 
   // In a real app, you'd want this to be a transaction.
   // Supabase edge functions are a good way to handle this.
@@ -170,7 +170,7 @@ export async function updateTaskOrder(tasksToUpdate: { id: string; position: num
 
 export async function deleteTask(taskId: string) {
   const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  const supabase = await createClient();
   const { error } = await supabase.from('tasks').delete().eq('id', taskId);
 
   if (error) {

@@ -184,7 +184,7 @@ export function UserTable({ initialProfiles, departments, managingUserRole }: Us
                                                 departments={departments ?? []}
                                                 managingUserRole={managingUserRole}
                                             >
-                                                <button className="w-full text-left flex items-center gap-2">
+                                                <button className="w-full  flex items-center gap-4 px-2 py-1.5 ">
                                                     <Edit className="h-4 w-4" /> Edit User
                                                 </button>
                                             </EditUserDialog>

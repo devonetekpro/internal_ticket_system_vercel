@@ -22,7 +22,7 @@ const statusColors: { [key: string]: string } = {
   closed: 'bg-red-500/20 text-red-400 border-red-500/50',
 };
 
-const availableStatuses = ['open', 'pending support', 'pending client', 'in_progress', 'resolved', 'closed'];
+const availableStatuses = ['open', 'pending support', 'pending client', 'closed'];
 
 export default function CrmTicketDetailsCard({ initialTicket, categories }: { initialTicket: UiCrmTicketDetails, categories: CrmCategory[] }) {
   const [ticket, setTicket] = useState(initialTicket);

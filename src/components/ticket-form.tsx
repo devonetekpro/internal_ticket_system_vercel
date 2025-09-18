@@ -120,7 +120,8 @@ export function TicketForm({
 }: TicketFormProps) {
   const supabase = createClient();
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const rawSearchParams = useSearchParams();
+    const searchParams = rawSearchParams ?? new URLSearchParams();
   const [loading, setLoading] = React.useState(false);
   const [file, setFile] = React.useState<File | null>(null);
   const [filePreview, setFilePreview] = React.useState<string | null>(null);
@@ -875,6 +876,7 @@ export function TicketForm({
               type="submit"
               disabled={loading || !form.formState.isValid}
               size="lg"
+              className="mt-4"
             >
               {loading && <Loader2 className="animate-spin mr-2" />}
               {mode === "edit" ? "Update Ticket" : "Submit Ticket"}

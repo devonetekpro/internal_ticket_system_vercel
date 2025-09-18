@@ -58,7 +58,7 @@ async function CrmPageContent({ searchParams }: { searchParams: { [key: string]:
 
   return (
     <main className="flex flex-1 flex-col gap-8 p-4 md:p-6">
-      <div className="flex items-center">
+      <div className="flex items-center flex-wrap justify-between gap-4">
         <div className="grid gap-1">
           <h1 className="font-headline text-3xl font-bold flex items-center gap-2">
             <MessageSquare className="h-8 w-8 text-primary" />
@@ -66,7 +66,7 @@ async function CrmPageContent({ searchParams }: { searchParams: { [key: string]:
           </h1>
           <p className="text-muted-foreground">Manage all client-facing tickets and communications.</p>
         </div>
-         <div className="ml-auto flex items-center gap-2">
+         <div className=" flex items-center gap-2">
           <Button asChild>
             <Link href="/dashboard/crm-tickets/new">
               <PlusCircle className="mr-2 h-4 w-4" />
