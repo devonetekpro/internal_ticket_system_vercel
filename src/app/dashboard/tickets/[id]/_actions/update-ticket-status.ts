@@ -1,4 +1,5 @@
 
+
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
@@ -11,58 +12,75 @@ type UpdateStatusResult = {
 }
 
 export async function updateTicketStatus(ticketId: string, newStatus: string): Promise<UpdateStatusResult> {
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { success: false, message: 'You must be logged in to update a ticket.' }
+    return { success: false, message: 'You must be logged in to update a ticket.' };
   }
-
-  const canUpdateStatus = await checkPermission('change_ticket_status');
-  if (!canUpdateStatus) {
-    return { success: false, message: 'You do not have permission to change ticket status.' };
-  }
-
 
   try {
-    const updateData: { status: string; } = {
-      status: newStatus,
+    const { data: ticket, error: ticketError } = await supabase
+      .from('internal_tickets')
+      .select('created_by')
+      .eq('id', ticketId)
+      .single();
+
+    if (ticketError || !ticket) {
+      return { success: false, message: 'Ticket not found.' };
     }
 
-    // Update the ticket status in the correct table
+    const isCreator = ticket.created_by === user.id;
+    const canChangeStatusByRole = await checkPermission('change_ticket_status');
+
+    if (!isCreator && !canChangeStatusByRole) {
+      return { success: false, message: 'You do not have permission to change the status of this ticket.' };
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('full_name, username')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile) {
+      return { success: false, message: 'Could not find your user profile.' };
+    }
+
     const { error: updateError } = await supabase
       .from('internal_tickets')
-      .update(updateData)
-      .eq('id', ticketId)
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq('id', ticketId);
 
     if (updateError) {
-      throw new Error(`Failed to update ticket status: ${updateError.message}`)
+      throw new Error(`Failed to update ticket status: ${updateError.message}`);
     }
 
-    // Create a system comment for the status change
-    const { data: userData } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-    const userName = userData?.full_name ?? user.email;
+    const userName = profile.full_name ?? profile.username ?? 'System';
+    const commentContent = `${userName} changed status to <b>${newStatus.replace(/_/g, ' ')}</b>`;
     
-    // The database trigger 'on_ticket_status_change' now handles the notification.
-    // We can still create a system comment for the activity feed.
-    const { error: commentError } = await supabase.from('ticket_comments').insert({
+    const commentPayload = {
       internal_ticket_id: ticketId,
-      user_id: user.id, 
-      content: `<b>${userName}</b> changed status to <b>${newStatus.replace(/_/g, ' ')}</b>`,
-    })
+      user_id: user.id,
+      content: commentContent,
+    };
+
+    const { error: commentError } = await supabase
+      .from('ticket_comments')
+      .insert(commentPayload);
 
     if (commentError) {
-        // Log the error but don't fail the whole operation,
-        // as the primary action (status update) was successful.
-        console.error('Failed to create status change comment:', commentError.message)
+      console.error('Failed to create status change comment:', commentError);
     }
 
-    revalidatePath(`/dashboard/tickets/${ticketId}`)
-    return { success: true, message: `Ticket status updated to ${newStatus}.` }
+    revalidatePath(`/dashboard/tickets/${ticketId}`);
+    revalidatePath('/dashboard/tickets');
+    revalidatePath('/dashboard');
+
+    return { success: true, message: `Ticket status updated to ${newStatus}.` };
+
   } catch (error: any) {
-    return { success: false, message: error.message }
+    console.error(`Full error in updateTicketStatus:`, error);
+    return { success: false, message: `Failed to update ticket status: ${error.message}` };
   }
 }

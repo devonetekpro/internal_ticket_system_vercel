@@ -1,3 +1,4 @@
+
 'use client'
 
 import React from 'react'
@@ -24,20 +25,19 @@ const allStatuses = [
 interface TicketProgressTrackerProps {
   ticketId: string
   currentStatus: string
-  canClose: boolean
+  canChangeStatus: boolean
   onStatusChange: (status: string) => void
 }
 
 export default function TicketProgressTracker({
   ticketId,
   currentStatus,
-  canClose,
+  canChangeStatus,
   onStatusChange,
 }: TicketProgressTrackerProps) {
   const [isPending, startTransition] = useTransition()
   
-  const availableStatuses = canClose ? allStatuses : allStatuses.filter(s => s.value !== 'closed');
-  const currentIndex = availableStatuses.findIndex(s => s.value === currentStatus);
+  const currentIndex = allStatuses.findIndex(s => s.value === currentStatus);
 
   const handleStatusChange = (newStatus: string) => {
     if (newStatus === currentStatus) return
@@ -59,32 +59,34 @@ export default function TicketProgressTracker({
     <div className="w-full">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2">
         <h3 className="text-sm font-medium text-muted-foreground">Ticket Progress</h3>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-             <Button variant="outline" size="sm" disabled={isPending} className="w-full sm:w-auto">
-                {isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 
-                ) : (
-                    <ChevronsUpDown className="mr-2 h-4 w-4" />
-                )}
-                Update Stage ({currentLabel})
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {availableStatuses.map((status) => (
-              <DropdownMenuItem
-                key={status.value}
-                onSelect={() => handleStatusChange(status.value)}
-                disabled={isPending || status.value === currentStatus}
-              >
-                {status.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {canChangeStatus ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" disabled={isPending} className="w-full sm:w-auto">
+                  {isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 
+                  ) : (
+                      <ChevronsUpDown className="mr-2 h-4 w-4" />
+                  )}
+                  Update Stage ({currentLabel})
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {allStatuses.map((status) => (
+                <DropdownMenuItem
+                  key={status.value}
+                  onSelect={() => handleStatusChange(status.value)}
+                  disabled={isPending || status.value === currentStatus}
+                >
+                  {status.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
       <div className="flex items-center">
-        {availableStatuses.map((status, index) => (
+        {allStatuses.map((status, index) => (
           <React.Fragment key={status.value}>
             <div className="flex flex-col items-center text-center">
               <div
@@ -106,7 +108,7 @@ export default function TicketProgressTracker({
                 {status.label}
               </span>
             </div>
-            {index < availableStatuses.length - 1 && (
+            {index < allStatuses.length - 1 && (
               <div
                 className={cn(
                   'flex-1 h-0.5 mx-2 transition-colors',

@@ -14,18 +14,18 @@ The primary goal of HelpFlow is to create a unified platform where support agent
 ### 2.1. Authentication
 - **Secure Sign-up & Login**: Users can create an account with email/password or sign in using OAuth providers (e.g., Microsoft).
 - **Profile Management**: After logging in, users can manage their profile information, including their full name, username, and avatar.
-- **Session Management**: Uses Supabase's secure session management with server-side validation.
+- **Session Management**: Uses Supabase's secure session management with server-side validation and protection against deactivated accounts.
 
 ### 2.2. Dashboard & Navigation
-- **Centralized Dashboard**: A landing page offering a high-level overview of key metrics like total tickets, open tickets, and resolution rates.
+- **Centralized Dashboard**: A landing page offering a high-level overview of key metrics like total tickets, open tickets, and recent activity.
 - **Role-Based Navigation**: The sidebar navigation is dynamically rendered based on the user's assigned role, ensuring users only see links to features they are permitted to access.
-- **Notifications**: A real-time notification system alerts users to important events like ticket assignments, mentions, and new collaborations.
+- **Real-time Notifications**: A notification system alerts users to important events like ticket assignments, mentions, and new collaborations.
 
 ### 2.3. Internal Help Desk
 - **Ticket Creation**: Users can create tickets using a comprehensive form or from pre-configured templates for common issues.
-- **Ticket Management**: A centralized view to see all tickets, with tabs to filter by "My Tickets", "Department Tickets", and "Collaborations".
+- **Ticket Management**: A centralized view to see all tickets, with tabs to filter by "My Tickets", "Department Tickets", and "Collaborations". Includes powerful filtering and bulk-update capabilities.
 - **Detailed Ticket View**: A dedicated page for each ticket showing its description, attachments, status, properties, involved personnel (creator, assignee, collaborators), and a full activity/comment thread.
-- **Commenting & Collaboration**: Users can post comments, reply to others, and mention colleagues (which triggers a notification).
+- **Commenting & Collaboration**: Users can post comments, reply to others, and mention colleagues (which triggers a notification). They can also use pre-saved comment templates.
 - **Ticket Assignment**: Authorized users can assign or re-assign tickets to other users within the appropriate departments.
 
 ### 2.4. CRM Desk (Client-Facing Support)
@@ -35,20 +35,29 @@ The primary goal of HelpFlow is to create a unified platform where support agent
 - **Direct Interaction**: Allows authorized agents to post replies directly to the client via the CRM API.
 - **Ticket Escalation**: Provides a seamless workflow to **escalate** a CRM ticket into a new internal ticket, pre-filling the creation form with relevant data from the client's issue.
 
-### 2.5. Administration & Management
-- **User Management**: A dedicated panel for administrators to view all users, and edit their role and department affiliation.
+### 2.5. Task Board (Kanban)
+- **Visual Workflow**: A drag-and-drop Kanban board for visually managing tasks and tickets.
+- **Ticket Integration**: Internal tickets can be added to the board as task cards, linking directly back to the ticket detail page.
+- **Custom Tasks**: Users can create standalone tasks that are not linked to any ticket.
+- **Persistent State**: The position and column of each task are saved to the database, ensuring the board state is consistent across sessions.
+
+### 2.6. Administration & Management
+- **User Management**: A dedicated panel for administrators to view all users, edit their role and department, and deactivate or permanently delete user accounts.
 - **Role & Permission Management**: A granular permissions table where system admins can define what each user role is allowed to do within the application (e.g., view analytics, delete tickets, manage users).
 - **Admin Panel**:
   - **Department Manager**: Create, rename, and delete departments.
-  - **Template Manager**: Create and manage ticket templates to speed up ticket creation for common requests.
+  - **Ticket Template Manager**: Create and manage ticket templates to speed up ticket creation for common requests.
+  - **SLA Policy Manager**: Define Service Level Agreement rules for ticket response and resolution times based on priority and department.
+  - **Chat Widget Settings**: Manage the pre-filled questions that appear in the public AI chat widget.
 
-### 2.6. Analytics
+### 2.7. Analytics
 - **Visual Dashboards**: A dedicated analytics page with charts visualizing key support metrics, including:
   - Tickets by Status (Pie Chart)
   - Tickets by Priority (Pie Chart)
   - Tickets by Category (Bar Chart)
+- **Agent Performance**: A table displaying key performance indicators (KPIs) for support agents, such as total resolved tickets, average resolution time, and SLA success rate.
 
-### 2.7. AI Assistant & Live Chat
+### 2.8. AI Assistant & Live Chat
 - **AI-Powered Chat Widget**: A public-facing chat widget provides instant, automated support to users.
 - **Knowledge Base Integration**: The AI assistant answers questions based on a knowledge base of uploaded documents.
 - **Seamless Agent Escalation**: If the AI cannot answer a question, it intelligently offers to connect the user with a live human agent.
@@ -77,7 +86,7 @@ HelpFlow is built on a modern, server-centric framework that leverages the power
 - **Server Actions**: Form submissions (creating tickets, updating profiles, etc.) are handled by Next.js Server Actions. This allows the frontend to call secure, server-side code directly without needing to create separate API endpoints.
 - **Client Components**: Interactivity-heavy components (e.g., ticket filters, comment forms, dropdown menus) are explicitly marked as Client Components (`'use client'`).
 - **Service Layer**: A dedicated `src/services` directory abstracts away the logic for communicating with external APIs (like the CRM). This keeps the UI components clean and separates concerns.
-- **Middleware**: A Next.js middleware file handles route protection, ensuring that only authenticated users can access dashboard pages.
+- **Middleware**: A Next.js middleware file handles route protection, ensuring that only authenticated users can access dashboard pages. It also checks if a user's account has been deactivated and logs them out if necessary.
 
 ### 3.3. Directory Structure
 

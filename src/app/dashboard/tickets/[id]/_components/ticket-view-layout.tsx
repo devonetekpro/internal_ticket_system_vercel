@@ -54,6 +54,7 @@ type ProfileStub = {
     full_name: string | null;
     username: string | null;
     avatar_url: string | null;
+    email?: string | null;
 }
 
 interface TicketViewLayoutProps {
@@ -346,7 +347,9 @@ export default function TicketViewLayout({
   }
 
   const getAssigneeName = (ticket: TicketDetails) => {
-    if (ticket.assigned_to_profile) return ticket.assigned_to_profile.full_name ?? ticket.assigned_to_profile.username
+    if (ticket.assigned_to_profile) {
+      return ticket.assigned_to_profile.full_name ?? ticket.assigned_to_profile.username ?? ticket.assigned_to_profile.email
+    }
     return 'Unassigned'
   }
   
@@ -522,9 +525,9 @@ export default function TicketViewLayout({
                       <div className="flex items-center gap-2">
                           <Avatar className="h-6 w-6">
                               <AvatarImage src={ticket.created_by_profile?.avatar_url ?? undefined} />
-                              <AvatarFallback>{getInitials(ticket.created_by_profile?.full_name, ticket.created_by_profile?.username)}</AvatarFallback>
+                              <AvatarFallback>{getInitials(ticket.created_by_profile?.full_name, ticket.created_by_profile?.username, ticket.created_by_profile?.email)}</AvatarFallback>
                           </Avatar>
-                          <span>{ticket.created_by_profile?.full_name ?? 'Unknown User'}</span>
+                          <span>{ticket.created_by_profile?.full_name ?? ticket.created_by_profile?.username ?? ticket.created_by_profile?.email ?? 'Unknown User'}</span>
                       </div>
                   </div>
                   <div className="flex items-center justify-between">

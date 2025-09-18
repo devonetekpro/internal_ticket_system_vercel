@@ -8,9 +8,15 @@ import Link from 'next/link';
 import { NewCrmTicketForm } from '../_components/new-crm-ticket-form';
 import { getCrmCategories } from '@/services/crm-service';
 import 'use-debounce';
+import { checkPermission } from '@/lib/helpers/permissions';
 
 
 export default async function NewCrmTicketPage() {
+  const canAccess = await checkPermission('access_crm_tickets');
+  if (!canAccess) {
+    redirect('/dashboard?error=unauthorized');
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -20,8 +26,7 @@ export default async function NewCrmTicketPage() {
 
   const { data: profile } = await supabase.from('profiles').select('role, crm_manager_id').eq('id', user.id).single();
   
-  // Also check if they have a crm_manager_id, otherwise they can't create tickets
-  if (!profile || !['system_admin', 'agent', 'ceo'].includes(profile.role ?? '') || !profile.crm_manager_id) {
+  if (!profile?.crm_manager_id) {
     redirect('/dashboard/crm-tickets?error=unauthorized_crm_creation');
   }
   

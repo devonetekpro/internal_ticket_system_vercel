@@ -1,9 +1,10 @@
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Book, FileText, Search, UploadCloud, Loader2, Trash2 } from 'lucide-react';
-import React, { useState, useMemo, useTransition } from 'react';
+import React, { useState, useMemo, useTransition, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { getDocuments, uploadDocument, deleteDocument } from './_actions/document-actions';
 import { toast } from 'sonner';
@@ -11,6 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
 import type { Database } from '@/lib/database.types';
 import { usePermissions } from '@/components/providers/permissions-provider';
+import { redirect } from 'next/navigation';
 
 type KnowledgeBaseDocument = Database['public']['Tables']['knowledge_base_documents']['Row'];
 
@@ -21,7 +23,14 @@ export default function KnowledgeBasePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const { hasPermission } = usePermissions();
+  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  
+  useEffect(() => {
+    if (!permissionsLoading && !hasPermission('access_knowledge_base')) {
+      redirect('/dashboard?error=unauthorized');
+    }
+  }, [permissionsLoading, hasPermission]);
+  
   const canManage = hasPermission('manage_knowledge_base');
 
   React.useEffect(() => {
@@ -87,6 +96,10 @@ export default function KnowledgeBasePage() {
       doc.content.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [searchTerm, documents]);
+  
+  if (permissionsLoading) {
+      return <div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin"/></div>
+  }
 
   return (
     <main className="flex-1 flex flex-col p-4 md:p-6 lg:p-8 gap-6 md:gap-8 bg-background text-foreground">

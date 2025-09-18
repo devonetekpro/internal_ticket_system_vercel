@@ -46,7 +46,7 @@ export default async function UserManagementPage() {
         redirect('/dashboard?error=profile_not_found');
     }
 
-    // Fetch all profiles and departments in parallel
+    // Fetch all profiles and departments in parallel, including soft-deleted ones.
     const [profilesResult, departmentsResult] = await Promise.all([
         supabase
             .from('profiles')
@@ -72,7 +72,7 @@ export default async function UserManagementPage() {
             <CardHeader>
                 <CardTitle>All Users</CardTitle>
                 <CardDescription>
-                    View and manage all users in the system.
+                    View and manage all users in the system. Deactivated users are visible to high-level administrators.
                 </CardDescription>
             </CardHeader>
             <CardContent>

@@ -4,7 +4,7 @@
 
 import React from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { notFound, redirect, useRouter } from 'next/navigation'
+import { notFound, redirect, useRouter, useSearchParams } from 'next/navigation'
 import type { Database, InternalTicketCollaborator, InternalTicketDepartment } from '@/lib/database.types'
 import InternalTicketView from './_components/internal-ticket-view'
 import type { User } from '@supabase/supabase-js'
@@ -35,8 +35,8 @@ export type TicketCollaboratorWithProfile = InternalTicketCollaborator & {
 export type TicketDetails =
   Database['public']['Tables']['internal_tickets']['Row'] & {
     departments: Pick<Department, 'name' | 'id'>[]
-    created_by_profile: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'username'> | null
-    assigned_to_profile: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'username'> | null
+    created_by_profile: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'username' | 'email'> | null
+    assigned_to_profile: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'username' | 'email'> | null
     collaborators: TicketCollaboratorWithProfile[]
     comments: CommentWithProfiles[]
   }
@@ -137,6 +137,7 @@ export default function TicketDetailsPage({
 }) {
   const supabase =  createClient()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [ticket, setTicket] = React.useState<TicketDetails | null>(null)
   const [currentUser, setCurrentUser] = React.useState<User | null>(null)
   const [allUsers, setAllUsers] = React.useState<any[]>([])
@@ -160,8 +161,8 @@ export default function TicketDetailsPage({
         `
         *,
         departments:internal_ticket_departments(departments(id, name)),
-        created_by_profile:profiles!internal_tickets_created_by_fkey (id, full_name, avatar_url, username),
-        assigned_to_profile:profiles!internal_tickets_assigned_to_fkey (id, full_name, avatar_url, username),
+        created_by_profile:profiles!internal_tickets_created_by_fkey (id, full_name, avatar_url, username, email),
+        assigned_to_profile:profiles!internal_tickets_assigned_to_fkey (id, full_name, avatar_url, username, email),
         collaborators:internal_ticket_collaborators!internal_ticket_id(
           *,
           profiles(full_name, avatar_url, username, id)
@@ -197,7 +198,7 @@ export default function TicketDetailsPage({
     const isCreator = ticketData.created_by === user.id;
     const isAssignee = ticketData.assigned_to === user.id;
     const isCollaborator = ticketData.collaborators.some((c: any) => c.profiles?.id === user.id);
-    const canViewAll = profile?.role && ['system_admin', 'admin', 'manager', 'department_head', 'ceo'].includes(profile.role);
+    const canViewAll = profile?.role && ['system_admin', 'super_admin', 'ceo', 'admin', 'department_head'].includes(profile.role);
 
     if (!isCreator && !isAssignee && !isCollaborator && !canViewAll) {
       toast.error("You don't have permission to view this ticket.");
@@ -232,7 +233,7 @@ export default function TicketDetailsPage({
     }
     setTicket(formattedTicket as TicketDetails)
       
-    const { data: allUsersData } = await supabase.from('profiles').select('id, full_name, username, avatar_url')
+    const { data: allUsersData } = await supabase.from('profiles').select('id, full_name, username, avatar_url, email')
     setAllUsers(allUsersData ?? [])
 
     const { data: taskData, error: taskError } = await supabase.from('tasks').select('id').eq('internal_ticket_id', params.id).limit(1);
@@ -255,6 +256,15 @@ export default function TicketDetailsPage({
     fetchTicketData(true).finally(() => setLoading(false));
   }, [fetchTicketData]);
   
+  React.useEffect(() => {
+    const error = searchParams.get('error');
+    if (error === 'unauthorized_edit') {
+      toast.error("You don't have permission to edit this ticket.");
+      // Clean the URL
+      router.replace(`/dashboard/tickets/${params.id}`, { scroll: false });
+    }
+  }, [searchParams, router, params.id]);
+
   React.useEffect(() => {
     if (!ticket) return;
 
@@ -320,5 +330,6 @@ export default function TicketDetailsPage({
     />
   );
 }
+
 
 

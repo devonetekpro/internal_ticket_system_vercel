@@ -1,5 +1,4 @@
 
-
 export type Json =
   | string
   | number
@@ -590,6 +589,7 @@ export type Database = {
           updated_at: string | null
           username: string | null
           website: string | null
+          deleted_at: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -603,6 +603,7 @@ export type Database = {
           updated_at?: string | null
           username?: string | null
           website?: string | null
+          deleted_at?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -616,6 +617,7 @@ export type Database = {
           updated_at?: string | null
           username?: string | null
           website?: string | null
+          deleted_at?: string | null
         }
         Relationships: [
           {
@@ -978,17 +980,17 @@ export type Database = {
         | "access_crm_tickets"
         | "access_live_chat"
         | "view_task_board"
+        | "delete_users"
       ticket_priority: "low" | "medium" | "high" | "critical"
       ticket_status: "open" | "in_progress" | "resolved" | "closed"
       user_role:
         | "system_admin"
         | "super_admin"
         | "admin"
-        | "manager"
+        | "ceo"
+        | "department_head"
         | "agent"
         | "user"
-        | "department_head"
-        | "ceo"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1167,7 +1169,7 @@ export const permissionGroups = {
       },
       change_ticket_status: {
         label: 'Change Ticket Progress Status',
-        description: 'User can change ticket status (e.g., from Open to In Progress).'
+        description: 'Allows the user to change the status of any ticket they can view. Ticket creators can always change the status of their own tickets.'
       },
       delete_tickets: {
         label: 'Delete Tickets',
@@ -1193,6 +1195,10 @@ export const permissionGroups = {
       manage_users_in_department: {
         label: 'Manage Users in Own Department',
         description: 'User can edit roles and details for other users within the same department.'
+      },
+      delete_users: {
+        label: 'Delete Users',
+        description: 'Allows permanent deletion of users from the system.'
       },
     }
   },
@@ -1235,10 +1241,10 @@ export const allPermissionKeys = Object.values(permissionGroups).flatMap(group =
 export type PermissionKey = keyof typeof permissionGroups.general.permissions | keyof typeof permissionGroups.ticket_management.permissions | keyof typeof permissionGroups.user_management.permissions | keyof typeof permissionGroups.system_administration.permissions;
 
 
-export const allUserRoles: UserRole[] = ["system_admin", "super_admin", "admin", "ceo", "department_head", "manager", "agent", "user"];
+export const allUserRoles: UserRole[] = ["system_admin", "super_admin", "admin", "ceo", "department_head", "agent", "user"];
 
-// Defines which roles can be managed by whom.
-export const manageableRoles: UserRole[] = ["admin", "ceo", "department_head", "manager", "agent", "user"];
+// Defines which roles can be managed in the UI.
+export const manageableRoles: UserRole[] = ["admin", "department_head", "agent", "user"];
 
 
 export const Constants = {
@@ -1253,14 +1259,21 @@ export const Constants = {
         "system_admin",
         "super_admin",
         "admin",
-        "manager",
+        "ceo",
+        "department_head",
         "agent",
         "user",
-        "department_head",
-        "ceo",
       ],
     },
   },
 } as const
+
+    
+
+  
+
+    
+
+    
 
     

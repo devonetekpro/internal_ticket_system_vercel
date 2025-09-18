@@ -22,7 +22,7 @@ async function checkPermissions(): Promise<{ permitted: boolean; message: string
     .eq('id', user.id)
     .single()
 
-  const canManage = profile?.role && ['system_admin', 'super_admin', 'admin', 'department_head', 'manager', 'ceo'].includes(profile.role)
+  const canManage = profile?.role && ['system_admin', 'super_admin', 'admin', 'department_head', 'ceo'].includes(profile.role)
 
   if (!canManage) {
     return { permitted: false, message: 'You do not have permission to perform this action.' }

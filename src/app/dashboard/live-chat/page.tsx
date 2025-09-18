@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { createClient } from '@/lib/supabase/client';
@@ -14,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Database } from '@/lib/database.types';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePermissions } from '@/components/providers/permissions-provider';
 
 const statusColors: { [key: string]: string } = {
   active: 'bg-green-500/20 text-green-400 border-green-500/50',
@@ -112,8 +114,16 @@ export default function LiveChatDashboardPage() {
   const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { hasPermission, isLoading: permissionsLoading } = usePermissions();
   const [chats, setChats] = useState<ChatWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!permissionsLoading && !hasPermission('access_live_chat')) {
+      redirect('/dashboard?error=unauthorized');
+    }
+  }, [permissionsLoading, hasPermission]);
+
 
   const tab = searchParams.get('tab') || 'active';
 
@@ -125,10 +135,6 @@ export default function LiveChatDashboardPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return redirect('/login');
 
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-      if (!profile || !['system_admin', 'admin', 'manager', 'department_head', 'agent', 'ceo'].includes(profile.role ?? '')) {
-        return redirect('/dashboard?error=unauthorized');
-      }
 
       const { data: chatsData, error } = await supabase
         .from('chats')
@@ -187,6 +193,10 @@ export default function LiveChatDashboardPage() {
   const handleTabChange = (newTab: string) => {
     router.push(`/dashboard/live-chat?tab=${newTab}`);
   };
+
+  if (permissionsLoading) {
+    return <div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
 
   return (
     <main className="flex-1 flex flex-col p-4 md:p-6 lg:p-8 gap-6 md:gap-8 bg-background text-foreground">

@@ -31,7 +31,7 @@ export async function updateTicketAssignee(
     .single()
 
   const userRole = currentUserProfile?.role
-  const canAssignRoles: (string | null)[] = ['system_admin', 'super_admin', 'admin', 'department_head', 'manager', 'ceo']
+  const canAssignRoles: (string | null)[] = ['system_admin', 'super_admin', 'admin', 'department_head', 'ceo']
 
   if (!userRole || !canAssignRoles.includes(userRole)) {
     return {
@@ -40,24 +40,7 @@ export async function updateTicketAssignee(
     }
   }
 
-  // 2. Enforce manager-specific permissions
-  if (userRole === 'manager') {
-    if (newAssigneeId) {
-        const { data: newAssigneeProfile } = await supabase
-            .from('profiles')
-            .select('department_id')
-            .eq('id', newAssigneeId)
-            .single()
-
-        if (newAssigneeProfile?.department_id !== currentUserProfile?.department_id) {
-            return {
-                success: false,
-                message: 'You can only assign tickets to users within your own department.',
-            }
-        }
-    }
-  }
-
+  // 2. Enforce department head specific permissions
   if (userRole === 'department_head') {
       if (newAssigneeId) {
           const { data: newAssigneeProfile } = await supabase
@@ -67,13 +50,12 @@ export async function updateTicketAssignee(
               .single();
 
           const isSameDepartment = newAssigneeProfile?.department_id === currentUserProfile?.department_id;
-          const isTargetManager = newAssigneeProfile?.role === 'manager';
           const isTargetDeptHead = newAssigneeProfile?.role === 'department_head';
 
-          if (!isSameDepartment && !isTargetManager && !isTargetDeptHead) {
+          if (!isSameDepartment && !isTargetDeptHead) {
               return {
                   success: false,
-                  message: "You can only assign tickets to users in your department, other department heads, or any manager."
+                  message: "You can only assign tickets to users in your department or other department heads."
               }
           }
       }

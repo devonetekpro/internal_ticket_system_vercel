@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { allUserRoles, type UserRole } from '@/lib/database.types';
-import { canManage } from '@/lib/utils';
+import { canManage, getAssignableRoles } from '@/lib/utils';
 
 const updateProfileSchema = z.object({
   role: z.enum(allUserRoles as [string, ...string[]]),
@@ -57,12 +57,13 @@ export async function updateUserProfile(
   }
 
   const newRole = data.role;
-  // Prevent escalation: check if the new role is one the current admin is allowed to assign.
-  if (managingUserRole === 'admin' && ['system_admin', 'ceo'].includes(newRole)) {
-      return { success: false, message: "You do not have permission to assign a user to this role."};
-  }
-  if (managingUserRole === 'ceo' && newRole === 'system_admin') {
-      return { success: false, message: "You do not have permission to assign a user to this role."};
+  const assignableRoles = getAssignableRoles(managingUserRole);
+
+  // Prevent escalation: The user being edited keeps their current role, which might be higher
+  // than what the admin can assign. We allow this, but we prevent assigning a *new* role
+  // that is outside the assignable list.
+  if (newRole !== targetUserProfile.role && !assignableRoles.includes(newRole)) {
+      return { success: false, message: `You do not have permission to assign the role "${newRole}".`};
   }
   
   // 4. Validate input data

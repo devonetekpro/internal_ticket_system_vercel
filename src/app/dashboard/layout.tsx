@@ -2,9 +2,9 @@
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/Layout/app-sidebar";
 import { SiteHeader } from "@/components/Layout/site-header";
-import { PermissionsProvider } from "@/components/providers/permissions-provider";
+import { PermissionsProvider, type PermissionRecord } from "@/components/providers/permissions-provider";
 import { createClient } from "@/lib/supabase/server";
-import type { Database } from "@/lib/database.types";
+import type { Database, RolePermissions } from "@/lib/database.types";
 import { redirect } from "next/navigation";
 import { getCrmTickets } from "@/services/crm-service";
 
@@ -24,7 +24,6 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  // Fetch only the most essential data for the layout
   const [profileResult, rolePermsResult, crmTicketsResult] = await Promise.all([
     supabase
       .from("profiles")
@@ -37,8 +36,7 @@ export default async function DashboardLayout({
       >(),
     supabase
       .from('role_permissions')
-      .select('*')
-      .eq('role', (await supabase.from('profiles').select('role').eq('id', user.id).single()).data?.role ?? 'user'),
+      .select('*'), // Select all permissions to build a detailed map
     getCrmTickets({ pageSize: 1, view: 'waiting_for_response' })
   ]);
   
@@ -47,30 +45,24 @@ export default async function DashboardLayout({
   const { counts: crmTicketCounts } = crmTicketsResult;
   
   if (!profile) {
-    // This can happen if the profile hasn't been created yet after signup.
-    // Redirect to a safe page or show an interstitial.
     redirect('/login?message=Your profile is still being created. Please wait a moment and log in again.');
   }
 
-  const initialPermissions: Record<string, boolean> = {};
-  if (rolePermsData) {
-      rolePermsData.forEach(perm => {
-          // For now, we simplify to a true/false check. Departmental logic is handled server-side.
-          initialPermissions[perm.permission] = true;
-      });
-  }
+  const initialPermissions: PermissionRecord[] = (rolePermsData || []).map(p => ({
+    role: p.role,
+    permission: p.permission,
+    department_id: p.department_id
+  }));
   
-  if (profile.role) {
-    initialPermissions['role'] = profile.role as any;
-  }
-  if (profile.departments?.name) {
-    initialPermissions['department'] = profile.departments.name as any;
-  }
+  const userContext = {
+    role: profile.role,
+    department_id: (await supabase.from('profiles').select('department_id').eq('id', user.id).single()).data?.department_id ?? null
+  };
   
   const crmWaitingCount = crmTicketCounts.waiting_for_response;
 
   return (
-    <PermissionsProvider initialPermissions={initialPermissions}>
+    <PermissionsProvider initialPermissions={initialPermissions} userContext={userContext}>
       <SidebarProvider
         style={
           {

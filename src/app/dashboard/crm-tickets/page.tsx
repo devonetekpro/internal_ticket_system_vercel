@@ -1,4 +1,5 @@
 
+
 import { MessageSquare, PlusCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -7,6 +8,8 @@ import CrmTicketTabs from './_components/crm-ticket-tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Suspense } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { checkPermission } from '@/lib/helpers/permissions';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +35,11 @@ const CrmPageSkeleton = () => (
 
 
 async function CrmPageContent({ searchParams }: { searchParams: { [key: string]: string | string[] | undefined } }) {
+  const canAccess = await checkPermission('access_crm_tickets');
+  if (!canAccess) {
+    redirect('/dashboard?error=unauthorized');
+  }
+
   const page = typeof searchParams.page === 'string' ? Number(searchParams.page) : 1;
   const view = typeof searchParams.view === 'string' ? searchParams.view : 'opened';
   const status = typeof searchParams.status === 'string' ? searchParams.status : undefined;
@@ -93,4 +101,3 @@ export default async function CrmTicketsPage({ searchParams }: { searchParams: {
         </Suspense>
     );
 }
-

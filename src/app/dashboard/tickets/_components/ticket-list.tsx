@@ -1,5 +1,4 @@
 
-
 'use client'
 
 import React, { useState, useMemo } from 'react'
@@ -12,7 +11,7 @@ import {
     TableRow,
   } from '@/components/ui/table'
   import { Badge } from '@/components/ui/badge'
-  import { ArrowUpRight, UserCheck, Ticket, Users, AlertTriangle, ChevronsUpDown, Loader2 } from 'lucide-react'
+  import { ArrowUpRight, UserCheck, Ticket, Users, AlertTriangle, ChevronsUpDown, Loader2, Trash2 } from 'lucide-react'
   import { Button } from '@/components/ui/button'
   import Link from 'next/link'
   import { formatDistanceToNow } from 'date-fns'
@@ -25,11 +24,12 @@ import {
   import { Checkbox } from '@/components/ui/checkbox'
   import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
   import { bulkUpdateTickets } from '../_actions/bulk-update-tickets'
+  import { bulkDeleteTickets } from '../_actions/bulk-delete-tickets'
   import { toast } from 'sonner'
   import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
   import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
   import { usePermissions } from '@/components/providers/permissions-provider'
-
+  import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
   
   const statusColors = {
     open: 'bg-green-500/20 text-green-400 border-green-500/50',
@@ -59,6 +59,7 @@ import {
     const { hasPermission } = usePermissions();
 
     const canManageTickets = hasPermission('assign_tickets') || hasPermission('change_ticket_status');
+    const canBulkDelete = currentUserProfile?.role && ['system_admin', 'super_admin', 'ceo'].includes(currentUserProfile.role);
   
     const handleSelectAll = (checked: boolean | 'indeterminate') => {
         if (checked === true) {
@@ -79,6 +80,18 @@ import {
     const handleBulkUpdate = async (updates: { status?: string; priority?: string; assigned_to?: string | null }) => {
         setIsUpdating(true);
         const result = await bulkUpdateTickets(selectedTicketIds, updates);
+        if (result.success) {
+            toast.success(result.message);
+            setSelectedTicketIds([]);
+        } else {
+            toast.error(result.message);
+        }
+        setIsUpdating(false);
+    }
+    
+    const handleBulkDelete = async () => {
+        setIsUpdating(true);
+        const result = await bulkDeleteTickets(selectedTicketIds);
         if (result.success) {
             toast.success(result.message);
             setSelectedTicketIds([]);
@@ -197,6 +210,28 @@ import {
                                 </Command>
                             </PopoverContent>
                         </Popover>
+                    )}
+                    
+                    {canBulkDelete && (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" size="sm" disabled={isUpdating}>
+                                    <Trash2 className="mr-2 h-4 w-4" /> Delete Selected
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This will permanently delete the {selectedTicketIds.length} selected tickets. This action cannot be undone.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleBulkDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     )}
 
                     {isUpdating && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}

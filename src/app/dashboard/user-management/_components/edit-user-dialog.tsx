@@ -1,7 +1,7 @@
 
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
@@ -37,6 +37,7 @@ import { updateUserProfile } from "../[id]/_actions/update-user-profile"
 import { Loader2 } from "lucide-react"
 import { handleProfileUpdate } from '../_actions/revalidate-users'
 import { allUserRoles } from '@/lib/database.types'
+import { getAssignableRoles } from '@/lib/utils'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 type Department = Database['public']['Tables']['departments']['Row']
@@ -50,12 +51,15 @@ const formSchema = z.object({
 interface EditUserDialogProps {
   profile: Profile
   departments: Department[]
+  managingUserRole: UserRole
   children: React.ReactNode
 }
 
-export default function EditUserDialog({ profile, departments, children }: EditUserDialogProps) {
+export default function EditUserDialog({ profile, departments, managingUserRole, children }: EditUserDialogProps) {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isOpen, setIsOpen] = useState(false)
+
+    const assignableRoles = useMemo(() => getAssignableRoles(managingUserRole), [managingUserRole]);
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -128,7 +132,13 @@ export default function EditUserDialog({ profile, departments, children }: EditU
                                         </SelectTrigger>
                                         </FormControl>
                                         <SelectContent>
-                                            {allUserRoles.map((role) => (
+                                            {/* Add the current role of the user being edited, even if it's not normally assignable */}
+                                            {profile.role && !assignableRoles.includes(profile.role) && (
+                                                <SelectItem key={profile.role} value={profile.role} disabled>
+                                                    {formatRole(profile.role)} (Current)
+                                                </SelectItem>
+                                            )}
+                                            {assignableRoles.map((role) => (
                                                 <SelectItem key={role} value={role}>
                                                     {formatRole(role)}
                                                 </SelectItem>

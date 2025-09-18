@@ -31,21 +31,35 @@ export async function checkPermission(permission: PermissionKey): Promise<boolea
       return true;
   }
 
-  // A permission is granted if a rule exists for:
-  // 1. The user's exact role AND their exact department.
-  // 2. The user's exact role AND the permission is global (department_id is null).
-  const { count, error } = await supabase
+  const { data: permissions, error } = await supabase
     .from('role_permissions')
-    .select('*', { count: 'exact', head: true })
+    .select('department_id')
     .eq('role', profile.role)
-    .eq('permission', permission)
-    .or(`department_id.eq.${profile.department_id},department_id.is.null`);
+    .eq('permission', permission);
 
   if (error) {
     console.error(`Error checking permission '${permission}' for role '${profile.role}':`, error);
     return false;
   }
 
-  // If count is greater than 0, a matching rule was found.
-  return count !== null && count > 0;
+  if (permissions.length === 0) {
+    return false;
+  }
+  
+  // Check if there is a global permission (department_id is null)
+  const hasGlobalPermission = permissions.some(p => p.department_id === null);
+  if (hasGlobalPermission) {
+    return true;
+  }
+
+  // If no global permission, check for department-specific permission
+  if (profile.department_id) {
+    const hasDepartmentPermission = permissions.some(p => p.department_id === profile.department_id);
+    if (hasDepartmentPermission) {
+      return true;
+    }
+  }
+
+  return false;
 }
+

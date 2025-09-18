@@ -8,6 +8,19 @@ export const config = {
     runtime: 'nodejs', // Important: Ensures Node.js runtime environment
 };
 
+async function safeJsonParse(response: Response) {
+    const text = await response.text();
+    if (!text) {
+        return null;
+    }
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        console.error("Failed to parse JSON response:", text);
+        return null;
+    }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method === 'POST') {
         await handlePost(req, res);

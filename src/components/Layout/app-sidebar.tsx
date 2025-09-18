@@ -1,6 +1,7 @@
 
 'use client'
 
+import React from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -34,6 +35,7 @@ import Link from "next/link";
 import { NavUser } from "../nav-user";
 import { usePermissions } from "../providers/permissions-provider";
 import type { User } from "@supabase/supabase-js";
+import { Skeleton } from "../ui/skeleton";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"] & { departments: { name: string } | null };
 
@@ -134,22 +136,35 @@ export function AppSidebar({
     },
   ];
 
-  const navGroups = allNavGroups
+  const navGroups = React.useMemo(() => allNavGroups
     .map((group) => ({
       ...group,
       links: group.links.filter((link) => !link.permission || hasPermission(link.permission)),
     }))
-    .filter((group) => group.links.length > 0);
+    .filter((group) => group.links.length > 0), [allNavGroups, hasPermission]);
 
   if (isLoading) {
-      return  <div className="w-[var(--sidebar-width)] p-4 space-y-4">
-                <div className="h-10"></div>
-                <div className="space-y-2">
-                    <div className="h-8 w-full bg-muted animate-pulse rounded-md" />
-                    <div className="h-8 w-full bg-muted animate-pulse rounded-md" />
-                    <div className="h-8 w-full bg-muted animate-pulse rounded-md" />
+      return  <aside className="w-[var(--sidebar-width)] p-4 space-y-4 border-r">
+                <Skeleton className="h-10 w-40" />
+                <div className="space-y-2 pt-4">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-full" />
                 </div>
-            </div>;
+                <div className="space-y-2 pt-8">
+                    <Skeleton className="h-4 w-24 mb-2" />
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                </div>
+            </aside>;
+  }
+  
+  const getDisplayName = () => {
+    if (!profile) return "Unknown User";
+    if (profile.role === 'department_head' && profile.departments?.name) {
+      return `${profile.departments.name} Head`;
+    }
+    return profile.full_name ?? profile.username ?? "Unknown User";
   }
 
   return (
@@ -233,7 +248,7 @@ export function AppSidebar({
       <SidebarFooter>
         <NavUser
           user={{
-            name: profile?.full_name ?? profile?.username ?? "Unknown User",
+            name: getDisplayName(),
             avatar: profile?.avatar_url || "",
             email: user.email ?? "No Email",
           }}

@@ -63,12 +63,10 @@ export default function InternalTicketView({ ticket, currentUser, allUsers, user
     const { hasPermission } = usePermissions();
     const router = useRouter();
 
-    const canCloseTicket = hasPermission('change_ticket_status');
-    const canEditTicket = hasPermission('edit_ticket_properties');
-    
-    // Deletion permissions: creator, system_admin, super_admin, ceo
     const isCreator = ticket.created_by === currentUser.id;
-    const canDeleteTicket = isCreator || hasPermission('delete_tickets'); // Assuming 'delete_tickets' is configured for admins
+    const canChangeStatus = isCreator || hasPermission('change_ticket_status');
+    const canEditTicket = isCreator || hasPermission('edit_ticket_properties');
+    const canDeleteTicket = isCreator || hasPermission('delete_tickets');
 
 
     const handleShare = () => {
@@ -164,14 +162,14 @@ export default function InternalTicketView({ ticket, currentUser, allUsers, user
 
                         <div className="font-medium text-muted-foreground">Department(s)</div>
                         <div className="flex flex-wrap gap-1">
-                          {ticket.departments.map(d => <Badge key={d.id} variant="secondary" className="font-normal">{d.name}</Badge>)}
+                          {ticket.departments.map(d => <Badge key={d.name} variant="secondary" className="font-normal">{d.name}</Badge>)}
                         </div>
                     </div>
                     <div className="md:col-span-2">
                         <TicketProgressTracker 
                             ticketId={ticket.id}
                             currentStatus={ticket.status}
-                            canClose={canCloseTicket}
+                            canChangeStatus={canChangeStatus}
                             onStatusChange={onStatusChange}
                         />
                     </div>

@@ -1,5 +1,4 @@
 
-
 'use client'
 
 import React, { useState, useEffect } from 'react'
@@ -383,7 +382,7 @@ export default function CreateTicketPage() {
 
         {view === 'form' && (
             <div className="flex flex-col gap-4">
-                <TicketForm template={selectedTemplate} />
+                <TicketForm template={selectedTemplate} crmTicketId={searchParams.get('crm_ticket_id')} />
             </div>
         )}
       </div>

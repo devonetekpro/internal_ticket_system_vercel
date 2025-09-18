@@ -1,11 +1,11 @@
 
-
 import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowLeft, Edit } from 'lucide-react';
 import { TicketForm } from '@/components/ticket-form';
+import { checkPermission } from '@/lib/helpers/permissions';
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +30,14 @@ export default async function EditTicketPage({ params }: { params: { id: string 
 
   if (error || !ticket) {
     notFound();
+  }
+
+  // Permission Check: A user can edit if they are the creator OR have the explicit permission.
+  const isCreator = ticket.created_by === user.id;
+  const hasEditPermissionByRole = await checkPermission('edit_ticket_properties');
+  
+  if (!isCreator && !hasEditPermissionByRole) {
+      redirect(`/dashboard/tickets/${params.id}?error=unauthorized_edit`);
   }
   
   const formattedTicket = {

@@ -5,31 +5,17 @@ import * as React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Form } from '@/components/ui/form';
-import { Card, CardFooter, CardContent } from '@/components/ui/card';
+import { Card, CardFooter, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { RolePermissions, UserRole, PermissionKey, Department } from '@/lib/database.types';
 import { updateRolePermissions } from '../_actions/update-role-permissions';
 import { toast } from 'sonner';
-import { Loader2, Shield, ChevronsUpDown, Check, X } from 'lucide-react';
+import { Loader2, Shield, ChevronsUpDown, Check, Building } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { z } from 'zod';
-
-const permissionSchema = z.object({
-  permission: z.string(),
-  role: z.string(),
-  departments: z.array(z.string()),
-});
-
-const formSchema = z.object({
-  permissions: z.array(permissionSchema),
-});
-
-type FormValues = z.infer<typeof formSchema>;
+import { Label } from '@/components/ui/label';
 
 interface PermissionsTableProps {
   initialPermissions: RolePermissions[];
@@ -43,26 +29,39 @@ const formatRoleName = (role: string) => {
     return role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
-const PermissionSelector = ({ departments, selectedDepartments, onChange }: { departments: Department[], selectedDepartments: string[], onChange: (value: string[]) => void }) => {
+const PermissionSelector = ({
+  allDepartments,
+  selectedDepartments,
+  onChange,
+}: {
+  allDepartments: Department[];
+  selectedDepartments: string[];
+  onChange: (value: string[]) => void;
+}) => {
     const [open, setOpen] = React.useState(false);
     const isGlobal = selectedDepartments.includes('ALL');
-    
+
     const handleSelect = (deptId: string) => {
+        let newSelection: string[];
+        const wasSelected = selectedDepartments.includes(deptId);
+
         if (deptId === 'ALL') {
-            onChange(isGlobal ? [] : ['ALL']);
+            newSelection = isGlobal ? [] : ['ALL'];
         } else {
-            const newSelection = selectedDepartments.includes(deptId)
-                ? selectedDepartments.filter(id => id !== deptId && id !== 'ALL')
-                : [...selectedDepartments.filter(id => id !== 'ALL'), deptId];
-            onChange(newSelection);
+            if (wasSelected) {
+                newSelection = selectedDepartments.filter(id => id !== deptId && id !== 'ALL');
+            } else {
+                newSelection = [...selectedDepartments.filter(id => id !== 'ALL'), deptId];
+            }
         }
+        onChange(newSelection);
     };
     
     const getButtonLabel = () => {
         if (isGlobal) return "All Departments";
         if (selectedDepartments.length === 0) return "No Access";
         if (selectedDepartments.length === 1) {
-            return departments.find(d => d.id === selectedDepartments[0])?.name ?? '1 Department';
+            return allDepartments.find(d => d.id === selectedDepartments[0])?.name ?? '1 Department';
         }
         return `${selectedDepartments.length} Departments`;
     }
@@ -91,9 +90,9 @@ const PermissionSelector = ({ departments, selectedDepartments, onChange }: { de
                             </CommandItem>
                         </CommandGroup>
                         <CommandGroup heading="Grant for Specific Departments">
-                            {departments.map(dept => (
+                            {allDepartments.map(dept => (
                                 <CommandItem key={dept.id} onSelect={() => handleSelect(dept.id)}>
-                                     <Check className={cn("mr-2 h-4 w-4", selectedDepartments.includes(dept.id) && !isGlobal ? "opacity-100" : "opacity-0")} />
+                                    <Check className={cn("mr-2 h-4 w-4", selectedDepartments.includes(dept.id) && !isGlobal ? "opacity-100" : "opacity-0")} />
                                     {dept.name}
                                 </CommandItem>
                             ))}
@@ -115,52 +114,55 @@ export default function PermissionsTable({
   allDepartments,
 }: PermissionsTableProps) {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  
+  const displayRoles = React.useMemo(() => {
+    // Filter out 'ceo' from the display list
+    const rolesToDisplay = manageableRoles.filter(role => role !== 'ceo');
+    return rolesToDisplay.map(role => ({
+      id: role,
+      label: formatRoleName(role),
+      role: role,
+    }));
+  }, [manageableRoles]);
 
-  const form = useForm<FormValues>({
+  const form = useForm({
     defaultValues: {
       permissions: allPermissionKeys.flatMap(key => {
         return manageableRoles.map(role => {
-            const globalPerm = initialPermissions.find(p => p.role === role && p.permission === key && p.department_id === null);
+            const relevantPerms = initialPermissions.filter(p => p.role === role && p.permission === key);
+            const globalPerm = relevantPerms.find(p => p.department_id === null);
+            
             let departments: string[] = [];
             if (globalPerm) {
                 departments = ['ALL'];
             } else {
-                departments = initialPermissions
-                    .filter(p => p.role === role && p.permission === key && p.department_id !== null)
-                    .map(p => p.department_id as string);
+                departments = relevantPerms.map(p => p.department_id).filter(Boolean) as string[];
             }
-            return {
-                permission: key,
-                role: role,
-                departments: departments,
-            };
+            return { permission: key, role, departments };
         });
       }),
     },
   });
-  
-  const onSubmit = async (data: FormValues) => {
-    setIsSubmitting(true);
-    
-    // Filter out permissions that have no departments assigned
-    const permissionsToUpdate = data.permissions.filter(p => p.departments.length > 0);
-    
-    const result = await updateRolePermissions(permissionsToUpdate);
 
+  const onSubmit = async (data: any) => {
+    setIsSubmitting(true);
+    const result = await updateRolePermissions(data.permissions);
     if (result.success) {
         toast.success(result.message);
     } else {
         toast.error(result.message);
     }
-
     setIsSubmitting(false);
   };
-
-
+  
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <Card className="shadow-none border-0">
+            <CardHeader className="p-0 mb-6">
+                <CardTitle className="mb-4">Configure Role Permissions</CardTitle>
+            </CardHeader>
+            
             <CardContent className="p-0">
                 <Accordion type="multiple" defaultValue={Object.keys(permissionGroups)} className="w-full space-y-4">
                     {Object.entries(permissionGroups).map(([groupKey, group]) => (
@@ -180,26 +182,30 @@ export default function PermissionsTable({
                                                 <p className="text-sm text-muted-foreground mt-1">{permDetails.description}</p>
                                             </div>
                                             <div className="space-y-3 pt-4 md:pt-0">
-                                                {manageableRoles.map(role => {
-                                                     const permissionIndex = form.getValues('permissions').findIndex(p => p.permission === permKey && p.role === role);
+                                                {displayRoles.map(displayRole => {
+                                                    const permissionIndex = form.getValues('permissions').findIndex(p => p.permission === permKey && p.role === displayRole.role);
                                                      if (permissionIndex === -1) return null;
-                                                     return (
+                                                     
+                                                    return (
                                                         <Controller
-                                                            key={role}
+                                                            key={displayRole.id}
                                                             control={form.control}
-                                                            name={`permissions.${permissionIndex}.departments` as const}
+                                                            name={`permissions.${permissionIndex}.departments`}
                                                             render={({ field }) => (
                                                                 <div className="flex items-center justify-between">
-                                                                    <span className="font-medium text-sm">{formatRoleName(role)}</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        {displayRole.role === 'department_head' && <Building className="h-4 w-4 text-muted-foreground" />}
+                                                                        <span className="font-medium text-sm">{displayRole.label}</span>
+                                                                    </div>
                                                                     <PermissionSelector
-                                                                        departments={allDepartments}
+                                                                        allDepartments={allDepartments}
                                                                         selectedDepartments={field.value}
                                                                         onChange={field.onChange}
                                                                     />
                                                                 </div>
                                                             )}
                                                         />
-                                                     )
+                                                    );
                                                 })}
                                             </div>
                                         </div>
@@ -221,3 +227,5 @@ export default function PermissionsTable({
     </Form>
   );
 }
+
+    

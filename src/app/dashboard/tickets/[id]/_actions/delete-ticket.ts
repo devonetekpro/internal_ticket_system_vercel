@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import type { UserRole } from '@/lib/database.types'
 import { checkPermission } from '@/lib/helpers/permissions'
 
 type Result = {
@@ -34,10 +35,10 @@ export async function deleteTicket(ticketId: string): Promise<Result> {
   }
   
   // 2. Check permissions
-  const isCreator = ticket.created_by === user.id
-  const canDeleteAnyTicket = await checkPermission('delete_tickets');
+  const isCreator = ticket.created_by === user.id;
+  const canDeleteByRole = await checkPermission('delete_tickets');
   
-  if (!isCreator && !canDeleteAnyTicket) {
+  if (!isCreator && !canDeleteByRole) {
     return { success: false, message: 'You do not have permission to delete this ticket.' }
   }
 

@@ -25,6 +25,18 @@ export const getInitials = (name: string | undefined | null, username: string | 
   return '?'
 }
 
+// Defines the power level of each role, lower is more powerful.
+const roleHierarchy: Record<UserRole, number> = {
+  system_admin: 0,
+  super_admin: 1,
+  ceo: 2,
+  admin: 3,
+  department_head: 4,
+  agent: 5,
+  user: 6,
+};
+
+
 /**
  * Determines if a user with a given role can manage another user with a target role.
  * This function enforces the role hierarchy.
@@ -33,18 +45,25 @@ export const getInitials = (name: string | undefined | null, username: string | 
  * @returns True if the action is permitted, false otherwise.
  */
 export function canManage(managingRole: UserRole, targetRole: UserRole): boolean {
-    if (managingRole === 'system_admin') {
-        // System admins can manage anyone except other system admins
-        return targetRole !== 'system_admin';
-    }
-    if (managingRole === 'ceo') {
-        // CEOs can manage anyone except system admins
-        return targetRole !== 'system_admin';
-    }
-    if (managingRole === 'admin') {
-        // Admins can manage anyone except system admins and ceos
-        return !['system_admin', 'ceo'].includes(targetRole);
-    }
-    // Other roles (manager, agent, etc.) cannot manage users through this system.
-    return false;
+    const managingLevel = roleHierarchy[managingRole];
+    const targetLevel = roleHierarchy[targetRole];
+
+    // A user can manage another user if their hierarchy level is lower (more powerful)
+    // and they are not trying to manage someone at their own level or higher.
+    return managingLevel < targetLevel;
 }
+
+/**
+ * Returns a list of roles that a user with the given role can assign.
+ * @param managingRole The role of the administrator.
+ * @returns An array of assignable UserRole strings.
+ */
+export function getAssignableRoles(managingRole: UserRole): UserRole[] {
+    const managingLevel = roleHierarchy[managingRole];
+    const allRoles = Object.keys(roleHierarchy) as UserRole[];
+    
+    // An admin can assign any role that is lower in the hierarchy than their own.
+    return allRoles.filter(role => roleHierarchy[role] > managingLevel);
+}
+
+    
