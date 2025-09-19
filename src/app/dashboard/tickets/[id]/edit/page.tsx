@@ -64,7 +64,7 @@ export default async function EditTicketPage({ params }: { params: { id: string 
         </div>
       </div>
       
-      <div className="grid md:grid-cols-[280px_1fr] gap-8 items-start">
+      <div className="grid md:grid-cols-1 gap-8 items-start">
         <div></div>
         <div className="flex flex-col gap-4">
             <TicketForm mode="edit" ticket={formattedTicket as any} />

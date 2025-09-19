@@ -114,7 +114,7 @@ export function AvatarUploader({ user, url, initials, onUpload, onDelete }: Avat
   }
 
   return (
-    <div className="flex items-center gap-6">
+    <div className="flex items-center justify-center flex-wrap gap-6">
         <input
             type="file"
             ref={fileInputRef}
@@ -125,7 +125,7 @@ export function AvatarUploader({ user, url, initials, onUpload, onDelete }: Avat
         />
         <div className="relative">
             <Avatar className="h-24 w-24 border-4 border-background ring-2 ring-primary/20">
-                <AvatarImage src={previewUrl ?? undefined} alt="User avatar" />
+                <AvatarImage className='object-cover' src={previewUrl ?? undefined} alt="User avatar" />
                 <AvatarFallback className="text-3xl">{initials}</AvatarFallback>
             </Avatar>
              {(uploading || deleting) && (

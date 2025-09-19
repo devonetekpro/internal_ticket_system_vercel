@@ -267,7 +267,7 @@ export default function CreateTicketPage() {
               <Icon className={cn('h-6 w-6', iconColorMap[category] || 'text-gray-400')} />
             </div>
             <div className='flex-1'>
-              <CardTitle className="text-base font-semibold">{template.title}</CardTitle>
+              <CardTitle className="text-base font-semibold break-words">{template.title}</CardTitle>
               <CardDescription>{template.subtitle ?? template.departments?.name}</CardDescription>
             </div>
              {!template.is_default && (
@@ -277,7 +277,7 @@ export default function CreateTicketPage() {
         </CardHeader>
         <CardContent className="flex-grow flex flex-col justify-between gap-3">
             <p className="text-sm text-muted-foreground flex-grow">{template.description}</p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center flex-wrap gap-2">
             <Badge variant="outline" className="font-normal">{template.category}</Badge>
             <Badge variant="outline" className={cn('capitalize', priorityClassMap[template.priority])}>
               {template.priority}
@@ -314,7 +314,7 @@ export default function CreateTicketPage() {
             <p className="text-muted-foreground">Submit a new support request or choose from our quick-start templates</p>
         </div>
       </div>
-      <div className="grid md:grid-cols-[280px_1fr] gap-8 items-start">
+      <div className="grid xl:grid-cols-[280px_1fr] gap-8 items-start">
         <div className="flex flex-col gap-4">
             <Card className="bg-muted/30">
                 <CardHeader>

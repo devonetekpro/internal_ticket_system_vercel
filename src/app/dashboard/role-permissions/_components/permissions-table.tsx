@@ -194,7 +194,7 @@ export default function PermissionsTable({
                                                             render={({ field }) => (
                                                                 <div className="flex items-center justify-between">
                                                                     <div className="flex items-center gap-2">
-                                                                        {displayRole.role === 'department_head' && <Building className="h-4 w-4 text-muted-foreground" />}
+                                                                        {/* {displayRole.role === 'department_head' && <Building className="h-4 w-4 text-muted-foreground" />} */}
                                                                         <span className="font-medium text-sm">{displayRole.label}</span>
                                                                     </div>
                                                                     <PermissionSelector

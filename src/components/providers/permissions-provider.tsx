@@ -59,7 +59,7 @@ export const PermissionsProvider = ({
     }
     
     // If it's a department-specific role, check if they have permission for their department
-    if (userContext.role === 'department_head' && userContext.department_id) {
+    if (userContext.department_id) {
        const hasDepartmentPermission = relevantPermissions.some(p => p.department_id === userContext.department_id);
        if (hasDepartmentPermission) {
            return true;

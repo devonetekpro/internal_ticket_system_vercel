@@ -43,7 +43,7 @@ export default function CrmTicketFilters() {
         }
       });
       // Always reset to page 1 when filters change
-      params.set("page", "1");
+      // params.set("page", "1");
       return params.toString();
     },
     [searchParams]

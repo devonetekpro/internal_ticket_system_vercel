@@ -179,7 +179,7 @@ export default function CrmTicketConversation({ initialTicket }: { initialTicket
                 {comment.author === 'Client' ? <User className="h-5 w-5"/> : <Briefcase className="h-5 w-5"/>}
               </AvatarFallback>
             </Avatar>
-            <div className="flex-1 rounded-lg border p-4 bg-muted/30">
+            <div className="flex-1 rounded-lg w-[90%] break-words border p-4 bg-muted/30">
               <div className="flex items-center justify-between mb-2">
                 <p className="font-semibold">{comment.authorName}</p>
                 <div className="flex items-center gap-2">

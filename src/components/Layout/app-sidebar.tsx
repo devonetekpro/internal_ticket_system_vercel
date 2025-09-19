@@ -62,7 +62,81 @@ export function AppSidebar({
 }: React.ComponentProps<typeof Sidebar> & { user: User; profile: Profile | null, crmWaitingCount: number }) {
   const { hasPermission, isLoading } = usePermissions();
 
-  const allNavGroups: NavGroup[] = [
+  // const allNavGroups: NavGroup[] = [
+  //   {
+  //     title: "Workspace",
+  //     links: [
+  //       {
+  //         href: "/dashboard",
+  //         icon: LayoutGrid,
+  //         label: "Dashboard",
+  //         exact: true,
+  //       },
+  //       {
+  //         href: "/dashboard/crm-tickets",
+  //         icon: MessageSquare,
+  //         label: "CRM Desk",
+  //         permission: "access_crm_tickets",
+  //         badge: crmWaitingCount,
+  //       },
+  //       {
+  //         href: "/dashboard/tickets",
+  //         icon: TicketIcon,
+  //         label: "Internal Desk",
+  //         permission: 'create_tickets', 
+  //       },
+  //       {
+  //           href: "/dashboard/tasks",
+  //           icon: ClipboardCheck,
+  //           label: "Task Board",
+  //           permission: 'view_task_board',
+  //       },
+  //        {
+  //         href: "/dashboard/live-chat",
+  //         icon: MessageCircleHeart,
+  //         label: "Live Chat",
+  //         permission: "access_live_chat",
+  //       },
+  //       {
+  //         href: "/dashboard/analytics",
+  //         icon: BarChart,
+  //         label: "Analytics",
+  //         permission: "view_analytics",
+  //       },
+  //       {
+  //         href: "/dashboard/knowledge-base",
+  //         icon: Book,
+  //         label: "Knowledge Base",
+  //         permission: "access_knowledge_base",
+  //       },
+  //     ],
+  //   },
+  //   {
+  //     title: "Administration",
+  //     links: [
+  //       {
+  //         href: "/dashboard/role-permissions",
+  //         icon: Shield,
+  //         label: "Role Permissions",
+  //         permission: "manage_roles",
+  //       },
+  //       {
+  //         href: "/dashboard/user-management",
+  //         icon: Users,
+  //         label: "User Management",
+  //         permission: "manage_all_users",
+  //       },
+  //       {
+  //         href: "/dashboard/admin-panel",
+  //         icon: Settings,
+  //         label: "Admin Panel",
+  //         permission: "access_admin_panel",
+  //       },
+  //     ],
+  //   },
+  // ];
+
+  const allNavGroups: NavGroup[] = React.useMemo(() => [
     {
       title: "Workspace",
       links: [
@@ -134,7 +208,7 @@ export function AppSidebar({
         },
       ],
     },
-  ];
+  ], [crmWaitingCount]);
 
   const navGroups = React.useMemo(() => allNavGroups
     .map((group) => ({

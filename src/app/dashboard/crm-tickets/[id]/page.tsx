@@ -30,8 +30,8 @@ export default async function CrmTicketDetailsPage({ params }: { params: { id: s
 
   return (
     <main className="flex-1 flex-col p-4 md:p-6 lg:p-8 gap-6 md:gap-8 bg-background text-foreground">
-      <div className="flex items-center gap-4 mb-4">
-        <Button variant="outline" className='self-start' size="icon" asChild>
+      <div className="flex items-center  gap-4 mb-4 flex-wrap">
+        <Button variant="outline" className='mt-5' size="icon" asChild>
           <Link href="/dashboard/crm-tickets">
             <ArrowLeft className="h-4 w-4" />
           </Link>

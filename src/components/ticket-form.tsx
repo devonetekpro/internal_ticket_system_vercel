@@ -667,6 +667,9 @@ export function TicketForm({
                           </Command>
                         </PopoverContent>
                       </Popover>
+                      <FormDescription>
+                        Auto-assign will route the ticket to the head of the selected department.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

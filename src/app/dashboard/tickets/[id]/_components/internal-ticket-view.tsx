@@ -88,7 +88,7 @@ export default function InternalTicketView({ ticket, currentUser, allUsers, user
     
     return (
         <main className="flex-1 flex flex-col p-4 md:p-6 lg:p-8 gap-6 md:gap-8 bg-background text-foreground">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                      <div className="flex items-center text-sm text-muted-foreground">
                         <Link href="/dashboard/tickets" className="hover:underline">Internal Help Desk</Link>
@@ -100,7 +100,7 @@ export default function InternalTicketView({ ticket, currentUser, allUsers, user
                       <h1 className="font-headline text-3xl font-bold">{ticket.title}</h1>
                     </div>
                 </div>
-                 <div className="flex items-center gap-2">
+                 <div className="flex items-center gap-2 overflow-x-auto">
                     <Button variant="outline" onClick={onRefresh} disabled={isRefreshing}>
                         <RefreshCcw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`}/> Refresh
                     </Button>
@@ -143,7 +143,7 @@ export default function InternalTicketView({ ticket, currentUser, allUsers, user
             </div>
 
              <Card>
-                <CardContent className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <CardContent className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="md:col-span-1 grid grid-cols-[120px_1fr] gap-x-4 gap-y-2 text-sm">
                         <div className="font-medium text-muted-foreground">Ticket ID</div>
                         <div className="font-mono text-xs mt-1">#{ticket.id.substring(0,8)}</div>
@@ -176,7 +176,7 @@ export default function InternalTicketView({ ticket, currentUser, allUsers, user
                 </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 items-start">
                 <TicketViewLayout 
                     ticket={ticket} 
                     currentUser={currentUser} 

@@ -18,7 +18,7 @@ export default function CrmTicketHeaderActions({ ticket }: CrmTicketHeaderAction
   };
 
   return (
-    <div className="ml-auto flex items-center gap-2">
+    <div className=" flex items-center gap-2">
       <Button variant="outline" onClick={handleShare}>
         <Share2 className="mr-2 h-4 w-4" /> Share
       </Button>

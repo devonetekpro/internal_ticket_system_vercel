@@ -112,7 +112,7 @@ export default function CrmTicketDetailsCard({ initialTicket, categories }: { in
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap">
           <span className="text-muted-foreground flex items-center gap-2"><Tag className="h-4 w-4" /> Category</span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
